@@ -2,7 +2,7 @@
 
 Subsistema de gestión de supermercado del sistema distribuido del laboratorio de Sistemas Distribuidos (FPUNA). Maneja catálogo de productos, stock y precios.
 
-Forma parte de un sistema compuesto por dos organizaciones autónomas que se comunican por paso de mensajes sobre sockets TCP/UDP. La contraparte de este subsistema es **[EntregaYa](https://github.com/\<owner\>/EntregaYa)**.
+Forma parte de un sistema compuesto por dos organizaciones autónomas que se comunican por paso de mensajes sobre sockets TCP/UDP. La contraparte de este subsistema es **[EntregaYa](https://github.com/mbarakajap/EntregaYa)**.
 
 > Estado actual: bootstrap. El proyecto tiene la configuración base de Maven y la estructura de packages. La clase `fpuna.supermax.Main` referenciada en `pom.xml` aún no está implementada (es un placeholder).
 
