@@ -26,7 +26,7 @@ Forma parte de un sistema compuesto por dos organizaciones autónomas que se com
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/<owner>/SuperMax.git
+git clone https://github.com/riverondev/SuperMax.git
 cd SuperMax
 ```
 
