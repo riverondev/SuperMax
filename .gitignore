@@ -3,3 +3,6 @@
 /.project
 /.settings/
 dependency-reduced-pom.xml
+
+#White & White -> Modified by Lucas
+.env/
