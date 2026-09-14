@@ -15,8 +15,7 @@ public class ProductoJSON {
 
         return obj.toJSONString();
     }
-    
-    
+
     public static Producto stringObjeto(String str) throws Exception {
     	Producto p = new Producto();
         JSONParser parser = new JSONParser();
@@ -28,10 +27,21 @@ public class ProductoJSON {
         
         Number precio = (Number) jsonObject.get("precio");
         Number stock = (Number) jsonObject.get("stock");
-        p.setPrecio(precio.intValue());
+        p.setPrecio(precio.longValue());
         p.setStock(stock.intValue());
         
         return p;
 	}
+
+    public static JSONObject objetoJson(Producto p) {
+        JSONObject obj = new JSONObject();
+
+        obj.put("sku", p.getSku());
+        obj.put("nombre", p.getNombre());
+        obj.put("precio", p.getPrecio());
+        obj.put("stock", p.getStock());
+
+        return obj;
+    }
 
 }
