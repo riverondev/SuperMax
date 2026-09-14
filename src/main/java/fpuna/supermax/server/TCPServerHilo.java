@@ -7,10 +7,16 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
+
+import fpuna.supermax.entidad.Producto;
+import fpuna.supermax.entidad.ProductoJSON;
+import fpuna.supermax.servicio.CatalogoServicio;
 
 public class TCPServerHilo extends Thread {
     private final Socket socket;
@@ -39,7 +45,8 @@ public class TCPServerHilo extends Thread {
     }
 
     private String procesar(String texto) {
-        Object requestId = null;
+        String requestId = null;
+
         try {
             Object valor = new JSONParser().parse(texto);
             if (!(valor instanceof JSONObject)) {
@@ -47,33 +54,44 @@ public class TCPServerHilo extends Thread {
             }
 
             JSONObject solicitud = (JSONObject) valor;
-            requestId = solicitud.get("requestId");
             String tipo = textoRequerido(solicitud, "tipo");
-            String id = textoRequerido(solicitud, "requestId");
-            String sucursalId = textoRequerido(solicitud, "sucursalId");
-            String sku = textoRequerido(solicitud, "sku");
+            requestId = textoRequerido(solicitud, "requestId");
 
-            if (!"GET_CATALOGO".equals(tipo)) {
-                return error(id, "TIPO_NO_SOPORTADO", "Solo se admite GET_CATALOGO");
+            switch(tipo.toUpperCase()){
+                case "GET_CATALOGO":
+                    CatalogoServicio s = new CatalogoServicio();
+                    
+                    // confirmar sku
+                    Object skuValor = solicitud.get("sku");
+                    if (skuValor != null && !(skuValor instanceof String)) {
+                        return error(requestId, "SOLICITUD_INVALIDA", "El campo sku debe ser texto");
+                    }
+                    String sku = (String) skuValor;
+
+                    List<Producto> lp = s.getCatalogo(sku);
+                    
+                    //respuesta
+                    JSONObject respuesta = new JSONObject();
+                    respuesta.put("ok", true);
+                    respuesta.put("requestId", requestId);
+
+                    JSONArray list = new JSONArray();
+                    for (Producto producto : lp) {
+                        list.add(ProductoJSON.objetoJson(producto));
+                    }
+                    respuesta.put("productos", list);
+
+                    //timestamp
+                    respuesta.put("timestamp", java.time.OffsetDateTime.now().toString());
+
+                    return respuesta.toJSONString();
+
+                default:
+                    return error(requestId, "TIPO_NO_SOPORTADO", "Solo se admite GET_CATALOGO");
+
             }
 
-            JSONArray productos = new JSONArray();
-            if ("SUC-01".equals(sucursalId) && "ARROZ-1K".equals(sku)) {
-                JSONObject producto = new JSONObject();
-                producto.put("sku", "ARROZ-1K");
-                producto.put("nombre", "Arroz 1 kg");
-                producto.put("precio", 8500L);
-                producto.put("disponible", true);
-                producto.put("stockInformativo", 24L);
-                productos.add(producto);
-            }
-
-            JSONObject respuesta = new JSONObject();
-            respuesta.put("ok", true);
-            respuesta.put("requestId", id);
-            respuesta.put("sucursalId", sucursalId);
-            respuesta.put("productos", productos);
-            return respuesta.toJSONString();
+            
         } catch (ParseException e) {
             return error(null, "JSON_INVALIDO", "No se pudo interpretar la solicitud");
         } catch (IllegalArgumentException e) {
