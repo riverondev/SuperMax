@@ -16,7 +16,7 @@ public class ProductoDAO {
 	public List<Producto> seleccionarCatalogo() {
 		String query = "SELECT sku, nombre, precio, stock FROM producto;";
 		
-		List<Productos> lista = new ArrayList<Producto>();
+		List<Producto> lista = new ArrayList<Producto>();
 		
 		Connection conn = null; 
         try 
@@ -51,7 +51,7 @@ public class ProductoDAO {
 	public List<Producto> seleccionarPorSku(String sku) {
 		String SQL = "SELECT sku, nombre, precio, stock FROM producto WHERE sku = ?;";
 		
-		List<Productos> lista = new ArrayList<Producto>();
+		List<Producto> lista = new ArrayList<Producto>();
 		
 		Connection conn = null; 
         try 

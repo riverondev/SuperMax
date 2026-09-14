@@ -4,13 +4,13 @@ public class Producto {
 
 	private String sku;
 	private String nombre;
-	private Integer precio;
+	private Long precio;
 	private Integer stock;
 
 	public Producto() {
 	}
 
-	public Producto(String sku, String nombre, Integer precio, Integer stock) {
+	public Producto(String sku, String nombre, Long precio, Integer stock) {
 		this.sku = sku;
 		this.nombre = nombre;
 		this.precio = precio;
@@ -33,11 +33,11 @@ public class Producto {
 		this.nombre = nombre;
 	}
 
-	public Integer getPrecio() {
+	public Long getPrecio() {
 		return precio;
 	}
 
-	public void setPrecio(Integer precio) {
+	public void setPrecio(Long precio) {
 		this.precio = precio;
 	}
 
