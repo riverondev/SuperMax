@@ -62,31 +62,15 @@ public class TCPServerHilo extends Thread {
             switch (tipo.toUpperCase()) {
                 case "GET_CATALOGO":
                     CatalogoServicio s = new CatalogoServicio();
-
-                    String sku = (String) solicitud.get("sku");
-                    if (sku.isEmpty())
-                        sku = null;
-
+                    String sku = leerSku(solicitud);
                     List<Producto> lp = s.getCatalogo(sku);
-
-                    // respuesta
-                    JSONObject respuesta = new JSONObject();
-                    respuesta.put("ok", true);
-                    respuesta.put("requestId", requestId);
-
-                    JSONArray list = new JSONArray();
-                    for (Producto producto : lp) {
-                        list.add(ProductoJSON.objetoJson(producto));
-                    }
-                    respuesta.put("productos", list);
-
-                    // timestamp
-                    respuesta.put("timestamp", java.time.OffsetDateTime.now().toString());
 
                     System.out.println("Request atendido: " + requestId);
 
-                    return respuesta.toJSONString();
+                    return respuestaGetCatalogo(requestId, lp);
+                
                 // AGREGAR SERVICIOS ACA
+                //case "SERVICIO":
 
                 default:
                     return error(requestId, "TIPO_NO_SOPORTADO", "Solo se admite GET_CATALOGO");
@@ -118,5 +102,36 @@ public class TCPServerHilo extends Thread {
         respuesta.put("codigo", codigo);
         respuesta.put("mensaje", mensaje);
         return respuesta.toJSONString();
+    }
+
+    private String leerSku(JSONObject solicitud) {
+        Object valor = solicitud.get("sku");
+
+        if (!(valor instanceof String)) {
+            throw new IllegalArgumentException(
+                    "El campo sku debe ser una cadena");
+        }
+
+        String sku = (String) valor;
+        return sku.isEmpty() ? null : sku;
+    }
+
+    private String respuestaGetCatalogo(String requestId, List<Producto> lp) {
+        // respuesta
+        JSONObject respuesta = new JSONObject();
+        respuesta.put("ok", true);
+        respuesta.put("requestId", requestId);
+
+        JSONArray list = new JSONArray();
+        for (Producto producto : lp) {
+            list.add(ProductoJSON.objetoJson(producto));
+        }
+        respuesta.put("productos", list);
+
+        // timestamp
+        respuesta.put("timestamp", java.time.OffsetDateTime.now().toString());
+
+        return respuesta.toJSONString();
+        
     }
 }
