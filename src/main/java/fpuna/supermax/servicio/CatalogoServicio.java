@@ -1,6 +1,7 @@
 package fpuna.supermax.servicio;
 
 import java.util.List;
+import java.sql.SQLException;
 
 import fpuna.supermax.bd.ProductoDAO;
 import fpuna.supermax.entidad.Producto;
@@ -13,17 +14,11 @@ public class CatalogoServicio {
         productoDAO = new ProductoDAO();
     }
 
-    public List<Producto> getCatalogo(String sku) {
+    public List<Producto> getCatalogo(String sku) throws SQLException{
         if (sku == null) {
             return productoDAO.seleccionarCatalogo();
         }
 
-        String skuLimpio = sku.trim();
-
-        if (skuLimpio.isEmpty()) {
-            throw new IllegalArgumentException("El SKU no puede estar vacío");
-        }
-
-        return productoDAO.seleccionarPorSku(skuLimpio);
+        return productoDAO.seleccionarPorSku(sku);
     }
 }

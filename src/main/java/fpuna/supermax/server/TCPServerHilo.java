@@ -8,6 +8,7 @@ import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.sql.SQLException;
 
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -28,11 +29,12 @@ public class TCPServerHilo extends Thread {
 
     @Override
     public void run() {
-        try (Socket cliente = socket;
-             BufferedReader entrada = new BufferedReader(new InputStreamReader(
-                     cliente.getInputStream(), StandardCharsets.UTF_8));
-             BufferedWriter salida = new BufferedWriter(new OutputStreamWriter(
-                     cliente.getOutputStream(), StandardCharsets.UTF_8))) {
+        try (
+                Socket cliente = socket;
+                BufferedReader entrada = new BufferedReader(new InputStreamReader(
+                        cliente.getInputStream(), StandardCharsets.UTF_8));
+                BufferedWriter salida = new BufferedWriter(new OutputStreamWriter(
+                        cliente.getOutputStream(), StandardCharsets.UTF_8))) {
             String solicitud = entrada.readLine();
             if (solicitud != null) {
                 salida.write(procesar(solicitud));
@@ -57,20 +59,17 @@ public class TCPServerHilo extends Thread {
             String tipo = textoRequerido(solicitud, "tipo");
             requestId = textoRequerido(solicitud, "requestId");
 
-            switch(tipo.toUpperCase()){
+            switch (tipo.toUpperCase()) {
                 case "GET_CATALOGO":
                     CatalogoServicio s = new CatalogoServicio();
-                    
-                    // confirmar sku
-                    Object skuValor = solicitud.get("sku");
-                    if (skuValor != null && !(skuValor instanceof String)) {
-                        return error(requestId, "SOLICITUD_INVALIDA", "El campo sku debe ser texto");
-                    }
-                    String sku = (String) skuValor;
+
+                    String sku = (String) solicitud.get("sku");
+                    if (sku.isEmpty())
+                        sku = null;
 
                     List<Producto> lp = s.getCatalogo(sku);
-                    
-                    //respuesta
+
+                    // respuesta
                     JSONObject respuesta = new JSONObject();
                     respuesta.put("ok", true);
                     respuesta.put("requestId", requestId);
@@ -81,17 +80,22 @@ public class TCPServerHilo extends Thread {
                     }
                     respuesta.put("productos", list);
 
-                    //timestamp
+                    // timestamp
                     respuesta.put("timestamp", java.time.OffsetDateTime.now().toString());
 
+                    System.out.println("Request atendido: " + requestId);
+
                     return respuesta.toJSONString();
+                // AGREGAR SERVICIOS ACA
 
                 default:
                     return error(requestId, "TIPO_NO_SOPORTADO", "Solo se admite GET_CATALOGO");
 
             }
 
-            
+        } catch (SQLException e) {
+            System.err.println("Error consultando catálogo: " + e.getMessage());
+            return error(requestId, "ERROR_BD", "No se pudo consultar el catálogo");
         } catch (ParseException e) {
             return error(null, "JSON_INVALIDO", "No se pudo interpretar la solicitud");
         } catch (IllegalArgumentException e) {
