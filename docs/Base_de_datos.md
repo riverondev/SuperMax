@@ -2,6 +2,8 @@
 
 Revisión del 03/10/2026. Se consultó directamente PostgreSQL en modo de solo lectura usando la conexión de `Bd.java`: `localhost:5432`, base `supermax`. Motor: PostgreSQL 18.4.
 
+Actualización del 16/10/2026: se volvió a consultar el esquema en modo de solo lectura; continúa existiendo únicamente `producto`, con las mismas columnas y restricciones y tres filas. Las tablas propuestas siguen pendientes de aplicar. Para el reparto definitivo de servicios, reintentos, vencimiento y orden de bloqueos, consultar [estado y acuerdos compartidos](Estado_actual.md) y sus dos handoffs.
+
 ## Estructura existente verificada
 
 La única tabla de usuario encontrada es **public.producto** (singular). No existen todavía `reserva` ni `reserva_item`.
@@ -44,7 +46,7 @@ Guardar `request_id` es una decisión de persistencia para reintentos TCP, aunqu
 | sku | VARCHAR(50), FK | Producto reservado; mismo tipo y longitud que la columna real. |
 | cantidad | INTEGER, NOT NULL, CHECK > 0 | Unidades reservadas de ese producto. |
 
-La clave primaria es **(reserva_id, sku)**: un producto aparece una vez en cada reserva. Java debe agrupar SKUs repetidos sumando sus cantidades, o rechazarlos explícitamente. El índice adicional por `sku` ayuda a calcular reservas de un producto. Las FKs impiden items sin reserva o sin producto. Se usa la conducta predeterminada de las FKs para evitar borrar accidentalmente productos o reservas referenciados.
+La clave primaria es **(reserva_id, sku)**: un producto aparece una vez en cada reserva. Para este MVP, Java rechazará SKUs repetidos con SOLICITUD_INVALIDA. El índice adicional por `sku` ayuda a calcular reservas de un producto. Las FKs impiden items sin reserva o sin producto. Se usa la conducta predeterminada de las FKs para evitar borrar accidentalmente productos o reservas referenciados.
 
 Una reserva válida debe tener al menos un item: el servicio valida que `items` no esté vacío y crea cabecera e items en una sola transacción. Una FK sola no garantiza que toda cabecera tenga items.
 
@@ -103,7 +105,7 @@ El vencimiento no ocurre automáticamente por tener una columna de fecha. Para e
 4. Insertar la reserva y todos sus items, y hacer commit. Manejar un conflicto de `request_id` como reintento, consultando la reserva original después del rollback.
 5. Para confirmar, también usar transacción y bloqueos: validar el estado y vencimiento y descontar stock junto con el cambio a `CONFIRMADA`. Solo una transición desde `RESERVADA` puede efectuar ese descuento. Toda operación que descuente stock debe seguir el mismo protocolo de bloqueo de productos.
 
-La secuencia de bloqueo de reserva y productos debe ser consistente entre confirmar, liberar y cualquier limpieza futura. Los CHECK de stock/cantidad no reemplazan la comprobación de disponibilidad ni el control de concurrencia.
+El orden acordado es productos en orden de SKU y después la cabecera de reserva existente. Confirmar/liberar identifica primero los SKUs sin bloquear, bloquea productos y luego reserva; relee el estado y obtiene la hora de PostgreSQL después de esperar los bloqueos. Ver el detalle en [los acuerdos compartidos](Estado_actual.md). Los CHECK de stock/cantidad no reemplazan la comprobación de disponibilidad ni el control de concurrencia.
 
 ## Alcance del MVP y validación
 
