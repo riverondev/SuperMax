@@ -1,4 +1,5 @@
 package fpuna.supermax.server;
+
 import fpuna.supermax.servicio.GestionReservaServicio;
 
 import java.io.BufferedReader;
@@ -20,6 +21,7 @@ import fpuna.supermax.entidad.Producto;
 import fpuna.supermax.entidad.ProductoJSON;
 import fpuna.supermax.servicio.CatalogoServicio;
 import fpuna.supermax.servicio.ReservaStockServicio;
+import fpuna.supermax.entidad.ReservaException;
 
 public class TCPServerHilo extends Thread {
     private final Socket socket;
@@ -70,18 +72,23 @@ public class TCPServerHilo extends Thread {
                     System.out.println("Request atendido: " + requestId);
 
                     return respuestaGetCatalogo(requestId, lp);
+
                 case "RESERVAR_STOCK":
                     return new ReservaStockServicio()
                             .ejecutar(solicitud)
                             .toJSONString();
-                // AGREGAR SERVICIOS ACA
-                //case "SERVICIO":
+
                 case "CONFIRMAR_RESERVA":
-                return new GestionReservaServicio()
-                    .ejecutar(solicitud)
-                    .toJSONString();
+                    return new GestionReservaServicio()
+                            .ejecutar(solicitud)
+                            .toJSONString();
+
+                // AGREGAR SERVICIOS ACA
+                // case "SERVICIO":
+
                 default:
-                    return error(requestId, "TIPO_NO_SOPORTADO", "Se admite GET_CATALOGO o RESERVAR_STOCK");
+                    return error(requestId, "TIPO_NO_SOPORTADO",
+                            "Se admite GET_CATALOGO, RESERVAR_STOCK o CONFIRMAR_RESERVA");
 
             }
 
@@ -99,22 +106,41 @@ public class TCPServerHilo extends Thread {
                     null,
                     "JSON_INVALIDO",
                     "No se pudo interpretar la solicitud");
+        } catch (ReservaException e) {
+            return error(requestId, e.getCodigo(), e.getMessage());
 
-        } catch (IllegalArgumentException e) {
+        } catch (
+
+        IllegalArgumentException e) {
             return error(
                     requestId,
                     "CAMPO_REQUERIDO",
                     e.getMessage());
         }
     }
-    
 
     private String textoRequerido(JSONObject solicitud, String campo) {
         Object valor = solicitud.get(campo);
-        if (!(valor instanceof String) || ((String) valor).trim().isEmpty()) {
-            throw new IllegalArgumentException("Falta el campo " + campo);
+
+        if (valor == null) {
+            throw new ReservaException(
+                    "CAMPO_REQUERIDO", "Falta el campo " + campo);
         }
-        return (String) valor;
+
+        if (!(valor instanceof String)) {
+            throw new ReservaException(
+                    "SOLICITUD_INVALIDA",
+                    "El campo " + campo + " debe ser una cadena");
+        }
+
+        String texto = (String) valor;
+
+        if (texto.trim().isEmpty()) {
+            throw new ReservaException(
+                    "CAMPO_REQUERIDO", "Falta el campo " + campo);
+        }
+
+        return texto;
     }
 
     private String error(Object requestId, String codigo, String mensaje) {

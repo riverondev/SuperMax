@@ -157,6 +157,16 @@ Una reserva abandonada continúa reteniendo unidades hasta liberarse. Dos creaci
 
 ## Modelo y documentos de implementación
 
+Datos para una demostración: [seed de productos v2](../db/003_seed_productos_v2.sql). Requiere la tabla producto y se ejecuta una vez que se selecciona la base deseada. No sobrescribe SKU existentes ni reinicia su stock al repetirse; no crea reservas.
+En una base vacía, ejecutar primero 001_producto.sql y 002_reservas_v2.sql. Si las tablas ya existen, no repetir los scripts de creación.
+El seed incluye DEMO-ARROZ-1K con físico inicial 10, DEMO-LECHE-1L con 20, DEMO-AZUCAR-1K con 2 y DEMO-ACEITE-900 con 0. Para usar los ejemplos anteriores, sustituir sus SKU por estos SKU de demostración.
+
+Desde PowerShell, ubicado en SuperMax:
+```powershell
+& 'C:\Program Files\PostgreSQL\18\bin\psql.exe' -h localhost -U postgres -d supermax -v ON_ERROR_STOP=1 -f .\db\003_seed_productos_v2.sql
+```
+El SELECT final muestra stock físico; consultar GET_CATALOGO para ver disponibilidad. Los valores disponibles pueden ser menores si ya se reservaron unidades. Para pruebas que reinicien datos, usar una base exclusiva de pruebas.
+
 - [SQL v2](../db/002_reservas_v2.sql): reserva con ID SERIAL, pedido externo y estado; detalles con ID INTEGER, SKU y cantidad.
 - [Handoff 1 v2](handoffs/01_reservar_stock_v2.md): creación, catálogo e integración.
 - [Handoff 2 v2](handoffs/02_confirmar_liberar_reserva_v2.md): confirmación y liberación.
