@@ -2,24 +2,24 @@ package fpuna.supermax.entidad;
 
 public class ReservaItem {
 
-    private String reservaId;
+    private Integer reservaId;
     private String sku;
     private Integer cantidad;
 
     public ReservaItem() {
     }
 
-    public ReservaItem(String reservaId, String sku, Integer cantidad) {
+    public ReservaItem(Integer reservaId, String sku, Integer cantidad) {
         this.reservaId = reservaId;
         this.sku = sku;
         this.cantidad = cantidad;
     }
 
-    public String getReservaId() {
+    public Integer getReservaId() {
         return reservaId;
     }
 
-    public void setReservaId(String reservaId) {
+    public void setReservaId(Integer reservaId) {
         this.reservaId = reservaId;
     }
 
