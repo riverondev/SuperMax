@@ -1,5 +1,7 @@
 # Sistema 2: SuperMax
 
+> Para la entrega académica de tres servicios, usar [Contratos reducidos v2](Contratos_reducidos_v2.md) y los handoffs v2. Este documento conserva el diseño original de cinco servicios; sus campos de reservas fueron simplificados.
+
 Comparando: Wait review
 
 | Santiago Adrián Pérez Barreto | 5610478 |

@@ -1,5 +1,7 @@
 # Estado y acuerdos del MVP — 16/10/2026
 
+> Actualización de alcance: usar [Contratos reducidos v2](Contratos_reducidos_v2.md) y los handoffs v2. El estado y los acuerdos siguientes son una revisión anterior: ya se adaptaron las entidades y se creó el SQL v2, pero DAO, servicios e integración siguen pendientes. No se volvió a verificar aquí el esquema real de PostgreSQL.
+
 Documento compartido para desarrollar los servicios 2 y 3 de SuperMax en paralelo. Distingue implementación existente y decisiones para el siguiente incremento. No se leyó `entrega-01`.
 
 ## Estado verificado
