@@ -11,6 +11,8 @@ import org.json.simple.JSONObject;
 
 import fpuna.supermax.bd.ReservaStockDAO;
 import fpuna.supermax.entidad.ReservaItem;
+import fpuna.supermax.entidad.Reserva;
+import fpuna.supermax.entidad.ReservaException;
 
 public class ReservaStockServicio {
 
@@ -43,21 +45,21 @@ public class ReservaStockServicio {
 
         Object valorPedido = solicitud.get("pedidoExternoId");
 
-        if (valorRequestId == null) {
-            return error(null, "CAMPO_REQUERIDO", "Falta el campo pedidoExternoId");
+        if (valorPedido == null) {
+            return error(requestId, "CAMPO_REQUERIDO", "Falta el campo pedidoExternoId");
         }
 
-        if (!(valorRequestId instanceof String)) {
-            return error(null, "SOLICITUD_INVALIDA", "El campo pedidoExternoId debe ser una cadena");
+        if (!(valorPedido instanceof String)) {
+            return error(requestId, "SOLICITUD_INVALIDA", "El campo pedidoExternoId debe ser una cadena");
         }
 
         String pedidoExternoId = (String) valorPedido;
 
-        if (requestId.trim().isEmpty()) {
+        if (pedidoExternoId.trim().isEmpty()) {
             return error(requestId, "CAMPO_REQUERIDO", "El campo pedidoExternoId no puede estar vacio");
         }
 
-        if (requestId.length() > 50) {
+        if (pedidoExternoId.length() > 50) {
             return error(requestId, "SOLICITUD_INVALIDA", "El campo pedidoExternoId no puede superar 50 caracteres");
         }
 
@@ -67,6 +69,20 @@ public class ReservaStockServicio {
             items = validarItems(solicitud.get("items"));
         } catch (IllegalArgumentException e) {
             return error(requestId, "SOLICITUD_INVALIDA", e.getMessage());
+        }
+
+        try {
+            Reserva reserva = reservaStockDAO.crearReserva(pedidoExternoId, items);
+
+            JSONObject respuesta = new JSONObject();
+            respuesta.put("ok", true);
+            respuesta.put("requestId", requestId);
+            respuesta.put("reservaId", reserva.getReservaId());
+            respuesta.put("estado", reserva.getEstado());
+
+            return respuesta;
+        } catch (ReservaException e) {
+            return error(requestId, e.getCodigo(), e.getMessage());
         }
     }
 

@@ -4,339 +4,139 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.TreeSet;
-
-import org.postgresql.util.PSQLException;
-import org.postgresql.util.ServerErrorMessage;
 
 import fpuna.supermax.entidad.Reserva;
+import fpuna.supermax.entidad.ReservaException;
 import fpuna.supermax.entidad.ReservaItem;
 
 public class ReservaStockDAO {
 
-    /*
-     * Recupera una reserva y sus items.
-     * Devuelve null cuando el requestId no existe.
-     */
-    public Reserva buscarPorRequestId(Connection conn, String requestId)
-            throws SQLException {
+    private Integer bloquearProducto(Connection conn, String sku) throws SQLException {
 
-        String sql =
-                "SELECT reserva_id, request_id, pedido_externo_id, "
-                + "estado, creada_en, expira_en "
-                + "FROM public.reserva "
-                + "WHERE request_id = ?";
-
-        Reserva reserva;
+        String sql = "SELECT stock FROM producto WHERE sku = ? FOR UPDATE";
 
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, requestId);
+            stmt.setString(1, sku);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getInt("stock") : null;
+            }
+        }
+    }
+
+    private long consultarDisponibilidad(Connection conn, String sku)
+            throws SQLException {
+
+        String sql = "SELECT p.stock - COALESCE(("
+                + "SELECT SUM(ri.cantidad) FROM reserva_item ri "
+                + "JOIN reserva r ON r.reserva_id = ri.reserva_id "
+                + "WHERE ri.sku = p.sku AND r.estado = 'RESERVADA'"
+                + "), 0) AS disponible "
+                + "FROM producto p WHERE p.sku = ?";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, sku);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (!rs.next()) {
-                    return null;
+                    throw new SQLException("No se encontro el producto bloqueado");
                 }
 
-                reserva = new Reserva();
-                reserva.setReservaId(rs.getString("reserva_id"));
-                reserva.setRequestId(rs.getString("request_id"));
-                reserva.setPedidoExternoId(
-                        rs.getString("pedido_externo_id"));
-                reserva.setEstado(rs.getString("estado"));
-                reserva.setCreadaEn(
-                        rs.getObject("creada_en", OffsetDateTime.class));
-                reserva.setExpiraEn(
-                        rs.getObject("expira_en", OffsetDateTime.class));
+                return rs.getLong("disponible");
             }
         }
-
-        reserva.setItems(
-                seleccionarItems(conn, reserva.getReservaId()));
-
-        return reserva;
     }
 
-    /*
-     * Recupera los detalles de una reserva.
-     */
-    public List<ReservaItem> seleccionarItems(
-            Connection conn, String reservaId) throws SQLException {
-
-        String sql =
-                "SELECT reserva_id, sku, cantidad "
-                + "FROM public.reserva_item "
-                + "WHERE reserva_id = ? "
-                + "ORDER BY sku";
-
-        List<ReservaItem> items = new ArrayList<>();
-
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, reservaId);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    ReservaItem item = new ReservaItem();
-
-                    item.setReservaId(rs.getString("reserva_id"));
-                    item.setSku(rs.getString("sku"));
-                    item.setCantidad(rs.getInt("cantidad"));
-
-                    items.add(item);
-                }
-            }
-        }
-
-        return items;
-    }
-
-    /*
-     * Bloquea los productos existentes en orden ascendente de SKU.
-     *
-     * Devuelve SKU -> stock fisico.
-     * Un SKU solicitado que no aparezca en el mapa no existe.
-     *
-     * Requiere una transaccion con autoCommit=false.
-     * Los bloqueos duran hasta commit o rollback.
-     */
-    public Map<String, Integer> bloquearProductos(
-            Connection conn, Collection<String> skus)
+    public Reserva crearReserva(String pedidoExternoId, List<ReservaItem> items)
             throws SQLException {
 
-        List<String> ordenados = ordenarSkus(skus);
-        Map<String, Integer> productos = new LinkedHashMap<>();
-
-        if (ordenados.isEmpty()) {
-            return productos;
+        if (items == null || items.isEmpty()) {
+            throw new ReservaException(
+                    "SOLICITUD_INVALIDA", "La reserva debe incluir items");
         }
 
-        String sql =
-                "SELECT sku, stock "
-                + "FROM public.producto "
-                + "WHERE sku IN (" + crearParametros(ordenados.size()) + ") "
-                + "ORDER BY sku "
-                + "FOR UPDATE";
+        List<ReservaItem> ordenados = new ArrayList<>(items);
+        ordenados.sort(Comparator.comparing(ReservaItem::getSku));
 
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            asignarSkus(stmt, ordenados, 1);
+        Reserva reserva = new Reserva(
+                null, pedidoExternoId, "RESERVADA", ordenados);
 
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    productos.put(
-                            rs.getString("sku"),
-                            rs.getInt("stock"));
+        try (Connection conn = Bd.connect()) {
+            conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+            conn.setAutoCommit(false);
+
+            try {
+                for (ReservaItem item : ordenados) {
+                    if (bloquearProducto(conn, item.getSku()) == null) {
+                        throw new ReservaException(
+                                "PRODUCTO_NO_EXISTE",
+                                "No existe el producto " + item.getSku());
+                    }
                 }
-            }
-        }
 
-        return productos;
-    }
+                for (ReservaItem item : ordenados) {
+                    long disponible = consultarDisponibilidad(conn, item.getSku());
 
-    /*
-     * Obtiene la hora real de PostgreSQL al ejecutar la sentencia.
-     * El servicio debe llamarlo despues de adquirir los bloqueos.
-     */
-    public OffsetDateTime obtenerHoraActual(Connection conn)
-            throws SQLException {
-
-        String sql = "SELECT clock_timestamp() AS ahora";
-
-        try (PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-
-            if (!rs.next()) {
-                throw new SQLException(
-                        "No se pudo obtener la hora de PostgreSQL");
-            }
-
-            return rs.getObject("ahora", OffsetDateTime.class);
-        }
-    }
-
-    /*
-     * Consulta disponibilidad para todos los SKUs en una sola sentencia.
-     *
-     * disponible = stock fisico - reservas activas no vencidas.
-     *
-     * Debe ejecutarse despues de bloquearProductos(), usando la
-     * misma conexion y aislamiento READ_COMMITTED.
-     */
-    public Map<String, Long> consultarDisponibilidad(
-            Connection conn,
-            Collection<String> skus,
-            OffsetDateTime instanteEvaluacion) throws SQLException {
-
-        List<String> ordenados = ordenarSkus(skus);
-        Map<String, Long> disponibilidad = new LinkedHashMap<>();
-
-        if (ordenados.isEmpty()) {
-            return disponibilidad;
-        }
-
-        String sql =
-                "SELECT p.sku, "
-                + "p.stock::BIGINT - COALESCE(SUM( "
-                + "    CASE "
-                + "        WHEN r.estado = 'RESERVADA' "
-                + "             AND r.expira_en > ? "
-                + "        THEN ri.cantidad::BIGINT "
-                + "        ELSE 0::BIGINT "
-                + "    END "
-                + "), 0) AS disponible "
-                + "FROM public.producto p "
-                + "LEFT JOIN public.reserva_item ri ON ri.sku = p.sku "
-                + "LEFT JOIN public.reserva r "
-                + "    ON r.reserva_id = ri.reserva_id "
-                + "WHERE p.sku IN ("
-                + crearParametros(ordenados.size()) + ") "
-                + "GROUP BY p.sku, p.stock "
-                + "ORDER BY p.sku";
-
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setObject(1, instanteEvaluacion);
-            asignarSkus(stmt, ordenados, 2);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    disponibilidad.put(
-                            rs.getString("sku"),
-                            rs.getLong("disponible"));
+                    if (disponible < item.getCantidad()) {
+                        throw new ReservaException(
+                                "SIN_STOCK",
+                                "Stock insuficiente para " + item.getSku());
+                    }
                 }
+
+                insertarCabecera(conn, reserva);
+                insertarItems(conn, reserva);
+
+                conn.commit();
+                return reserva;
+            } catch (SQLException | RuntimeException e) {
+                try {
+                    conn.rollback();
+                } catch (SQLException errorRollback) {
+                    e.addSuppressed(errorRollback);
+                }
+                throw e;
             }
         }
-
-        return disponibilidad;
-    }
-
-    /*
-     * Inserta cabecera y detalles en la transaccion del servicio.
-     *
-     * No modifica producto.stock.
-     * Si falla cualquier insercion, propaga SQLException.
-     * El servicio debe hacer rollback de toda la operacion.
-     */
-    public void insertarReserva(Connection conn, Reserva reserva)
-            throws SQLException {
-
-        if (reserva.getItems() == null
-                || reserva.getItems().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "La reserva debe tener al menos un item");
-        }
-
-        insertarCabecera(conn, reserva);
-        insertarItems(conn, reserva);
     }
 
     private void insertarCabecera(Connection conn, Reserva reserva)
             throws SQLException {
 
-        String sql =
-                "INSERT INTO public.reserva ("
-                + "reserva_id, request_id, pedido_externo_id, "
-                + "estado, creada_en, expira_en"
-                + ") VALUES (?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO reserva (pedido_externo_id) "
+                + "VALUES (?) RETURNING reserva_id";
 
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, reserva.getReservaId());
-            stmt.setString(2, reserva.getRequestId());
-            stmt.setString(3, reserva.getPedidoExternoId());
-            stmt.setString(4, reserva.getEstado());
-            stmt.setObject(5, reserva.getCreadaEn());
-            stmt.setObject(6, reserva.getExpiraEn());
+            stmt.setString(1, reserva.getPedidoExternoId());
 
-            stmt.executeUpdate();
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    throw new SQLException("No se obtuvo el ID de la reserva");
+                }
+
+                reserva.setReservaId(rs.getInt("reserva_id"));
+                reserva.setEstado("RESERVADA");
+            }
         }
     }
 
     private void insertarItems(Connection conn, Reserva reserva)
             throws SQLException {
 
-        String sql =
-                "INSERT INTO public.reserva_item ("
-                + "reserva_id, sku, cantidad"
-                + ") VALUES (?, ?, ?)";
+        String sql = "INSERT INTO reserva_item (reserva_id, sku, cantidad) "
+                + "VALUES (?, ?, ?)";
 
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             for (ReservaItem item : reserva.getItems()) {
-                stmt.setString(1, reserva.getReservaId());
+                stmt.setInt(1, reserva.getReservaId());
                 stmt.setString(2, item.getSku());
                 stmt.setInt(3, item.getCantidad());
 
-                stmt.addBatch();
+                stmt.executeUpdate();
             }
-
-            stmt.executeBatch();
-        }
-    }
-
-    /*
-     * Reconoce exclusivamente la violacion de unicidad de request_id.
-     * No confunde otros errores SQL con un reintento.
-     */
-    public boolean esConflictoRequestId(SQLException error) {
-        SQLException actual = error;
-
-        while (actual != null) {
-            if (actual instanceof PSQLException
-                    && "23505".equals(actual.getSQLState())) {
-
-                PSQLException errorPostgres = (PSQLException) actual;
-                ServerErrorMessage detalle =
-                        errorPostgres.getServerErrorMessage();
-
-                if (detalle != null
-                        && "uq_reserva_request_id".equals(
-                                detalle.getConstraint())) {
-                    return true;
-                }
-            }
-
-            actual = actual.getNextException();
-        }
-
-        return false;
-    }
-
-    /*
-     * Prepara una lista sin duplicados para construir consultas.
-     * El servicio debe rechazar los SKUs repetidos en la solicitud
-     * antes de llamar al DAO.
-     */
-    private List<String> ordenarSkus(Collection<String> skus) {
-        return new ArrayList<>(new TreeSet<>(skus));
-    }
-
-    /*
-     * Genera exclusivamente placeholders: ?, ?, ...
-     * Los valores se asignan mediante PreparedStatement.
-     */
-    private String crearParametros(int cantidad) {
-        StringBuilder parametros = new StringBuilder();
-
-        for (int i = 0; i < cantidad; i++) {
-            if (i > 0) {
-                parametros.append(", ");
-            }
-
-            parametros.append("?");
-        }
-
-        return parametros.toString();
-    }
-
-    private void asignarSkus(
-            PreparedStatement stmt,
-            List<String> skus,
-            int primerParametro) throws SQLException {
-
-        for (int i = 0; i < skus.size(); i++) {
-            stmt.setString(primerParametro + i, skus.get(i));
         }
     }
 }

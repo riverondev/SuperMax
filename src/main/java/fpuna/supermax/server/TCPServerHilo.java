@@ -18,6 +18,7 @@ import org.json.simple.parser.ParseException;
 import fpuna.supermax.entidad.Producto;
 import fpuna.supermax.entidad.ProductoJSON;
 import fpuna.supermax.servicio.CatalogoServicio;
+import fpuna.supermax.servicio.ReservaStockServicio;
 
 public class TCPServerHilo extends Thread {
     private final Socket socket;
@@ -68,18 +69,21 @@ public class TCPServerHilo extends Thread {
                     System.out.println("Request atendido: " + requestId);
 
                     return respuestaGetCatalogo(requestId, lp);
-                
+                case "RESERVAR_STOCK":
+                    return new ReservaStockServicio()
+                            .ejecutar(solicitud)
+                            .toJSONString();
                 // AGREGAR SERVICIOS ACA
-                //case "SERVICIO":
+                // case "SERVICIO":
 
                 default:
-                    return error(requestId, "TIPO_NO_SOPORTADO", "Solo se admite GET_CATALOGO");
+                    return error(requestId, "TIPO_NO_SOPORTADO", "Se admite GET_CATALOGO o RESERVAR_STOCK");
 
             }
 
         } catch (SQLException e) {
-            System.err.println("Error consultando catálogo: " + e.getMessage());
-            return error(requestId, "ERROR_BD", "No se pudo consultar el catálogo");
+            System.err.println("Error de base de datos: " + e.getMessage());
+            return error(requestId, "ERROR_BD", "No se pudo completar la operacion");
         } catch (ParseException e) {
             return error(null, "JSON_INVALIDO", "No se pudo interpretar la solicitud");
         } catch (IllegalArgumentException e) {
@@ -132,6 +136,6 @@ public class TCPServerHilo extends Thread {
         respuesta.put("timestamp", java.time.OffsetDateTime.now().toString());
 
         return respuesta.toJSONString();
-        
+
     }
 }
