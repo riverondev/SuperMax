@@ -1,4 +1,5 @@
 package fpuna.supermax.server;
+import fpuna.supermax.servicio.GestionReservaServicio;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -71,21 +72,38 @@ public class TCPServerHilo extends Thread {
                 
                 // AGREGAR SERVICIOS ACA
                 //case "SERVICIO":
-
+                case "CONFIRMAR_RESERVA":
+                return new GestionReservaServicio()
+                    .ejecutar(solicitud)
+                    .toJSONString();
                 default:
                     return error(requestId, "TIPO_NO_SOPORTADO", "Solo se admite GET_CATALOGO");
 
             }
 
         } catch (SQLException e) {
-            System.err.println("Error consultando catálogo: " + e.getMessage());
-            return error(requestId, "ERROR_BD", "No se pudo consultar el catálogo");
+            System.err.println(
+                    "Error de base de datos: " + e.getMessage());
+
+            return error(
+                    requestId,
+                    "ERROR_BD",
+                    "No se pudo completar la operacion");
+
         } catch (ParseException e) {
-            return error(null, "JSON_INVALIDO", "No se pudo interpretar la solicitud");
+            return error(
+                    null,
+                    "JSON_INVALIDO",
+                    "No se pudo interpretar la solicitud");
+
         } catch (IllegalArgumentException e) {
-            return error(requestId, "CAMPO_REQUERIDO", e.getMessage());
+            return error(
+                    requestId,
+                    "CAMPO_REQUERIDO",
+                    e.getMessage());
         }
     }
+    
 
     private String textoRequerido(JSONObject solicitud, String campo) {
         Object valor = solicitud.get(campo);

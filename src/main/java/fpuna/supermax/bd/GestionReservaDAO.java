@@ -1,102 +1,85 @@
 package fpuna.supermax.bd;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
-
 import fpuna.supermax.entidad.Reserva;
 import fpuna.supermax.entidad.ReservaItem;
+import fpuna.supermax.entidad.ReservaException;
+
 public class GestionReservaDAO {
-     public Reserva buscarPorReservaId(Connection conn, String reservaId)
-      throws SQLException {
+    interface Conexion {
+        Connection abrir() throws SQLException;
+    }
 
-        String sql =
-                "SELECT reserva_id, request_id, pedido_externo_id, "
-                + "estado, creada_en, expira_en "
-                + "FROM public.reserva "
-                + "WHERE reserva_id = ?";
+    private final Conexion conexion;
+    private final GestionReservaConsultas consultas = new GestionReservaConsultas();
 
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, reservaId);
+    public GestionReservaDAO() {
+        this(Bd::connect);
+    }
 
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) {
-                    return null;
+    GestionReservaDAO(Conexion conexion) {
+        this.conexion = conexion;
+    }
+
+    public Reserva gestionarReserva(int reservaId, String accion) throws SQLException {
+        if (!"CONFIRMAR".equals(accion) && !"LIBERAR".equals(accion)) {
+            throw new ReservaException("SOLICITUD_INVALIDA", "Accion no admitida");
+        }
+        try (Connection conn = conexion.abrir()) {
+            conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+            conn.setAutoCommit(false);
+            try {
+                Reserva inicial = consultas.leerReserva(conn, reservaId, false);
+                if (inicial == null) {
+                    throw new ReservaException("RESERVA_NO_EXISTE", "No existe la reserva indicada");
                 }
-
-                Reserva reserva = new Reserva();
-                reserva.setReservaId(rs.getString("reserva_id"));
-                reserva.setRequestId(rs.getString("request_id"));
-                reserva.setPedidoExternoId(
-                        rs.getString("pedido_externo_id"));
-                reserva.setEstado(rs.getString("estado"));
-                reserva.setCreadaEn(
-                        rs.getObject("creada_en", OffsetDateTime.class));
-                reserva.setExpiraEn(
-                        rs.getObject("expira_en", OffsetDateTime.class));
-
-                return reserva;
+                List<ReservaItem> items = consultas.leerItems(conn, reservaId);
+                if (items.isEmpty()) {
+                    throw new SQLException("Reserva sin items");
+                }
+                consultas.bloquearProductos(conn, reservaId, items.size());
+                Reserva actual = consultas.leerReserva(conn, reservaId, true);
+                if (actual == null) {
+                    throw new SQLException("La reserva desaparecio durante la operacion");
+                }
+                actual.setItems(items);
+                aplicar(conn, actual, accion);
+                conn.commit();
+                return actual;
+            } catch (SQLException | RuntimeException error) {
+                try {
+                    conn.rollback();
+                } catch (SQLException falloRollback) {
+                    error.addSuppressed(falloRollback);
+                }
+                throw error;
             }
         }
     }
 
-    public List<ReservaItem> seleccionarItems(Connection conn, String reservaId) 
-    throws SQLException {
-
-    String sql =
-            "SELECT reserva_id, sku, cantidad "
-            + "FROM public.reserva_item "
-            + "WHERE reserva_id = ? "
-            + "ORDER BY sku";
-
-    List<ReservaItem> items = new ArrayList<>();
-
-    try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-        stmt.setString(1, reservaId);
-
-        try (ResultSet rs = stmt.executeQuery()) {
-            while (rs.next()) {
-                ReservaItem item = new ReservaItem();
-
-                item.setReservaId(rs.getString("reserva_id"));
-                item.setSku(rs.getString("sku"));
-                item.setCantidad(rs.getInt("cantidad"));
-
-                items.add(item);
+    private void aplicar(Connection conn, Reserva reserva, String accion) throws SQLException {
+        String destino = "CONFIRMAR".equals(accion) ? "CONFIRMADA" : "LIBERADA";
+        if (destino.equals(reserva.getEstado())) {
+            return;
+        }
+        if (!"RESERVADA".equals(reserva.getEstado())) {
+            if (!"CONFIRMADA".equals(reserva.getEstado())
+                    && !"LIBERADA".equals(reserva.getEstado())) {
+                throw new SQLException("Estado de reserva desconocido");
+            }
+            throw new ReservaException("ESTADO_INVALIDO", "La accion contradice el estado de la reserva");
+        }
+        if ("CONFIRMAR".equals(accion)) {
+            String sql = "UPDATE public.producto SET stock = stock - ? WHERE sku = ? AND stock >= ?";
+            for (ReservaItem item : reserva.getItems()) {
+                consultas.actualizar(conn, sql, item.getCantidad(), item.getSku(), item.getCantidad());
             }
         }
+        consultas.actualizar(conn,
+                "UPDATE public.reserva SET estado = ? WHERE reserva_id = ? AND estado = 'RESERVADA'",
+                destino, reserva.getReservaId());
+        reserva.setEstado(destino);
     }
-
-    return items;
-    }
-
-    public int bloquearProductos(
-        Connection conn, String reservaId) throws SQLException {
-
-    String sql =
-            "SELECT p.sku "
-            + "FROM public.producto p "
-            + "JOIN public.reserva_item ri ON ri.sku = p.sku "
-            + "WHERE ri.reserva_id = ? "
-            + "ORDER BY p.sku "
-            + "FOR UPDATE OF p";
-
-    int cantidadBloqueada = 0;
-
-    try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-        stmt.setString(1, reservaId);
-
-        try (ResultSet rs = stmt.executeQuery()) {
-            while (rs.next()) {
-                cantidadBloqueada++;
-            }
-        }
-    }
-
-    return cantidadBloqueada;
-}
 }
