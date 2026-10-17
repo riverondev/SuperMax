@@ -1,5 +1,7 @@
 # Handoff 1 v2 — Reservar stock e integrar el catálogo
 
+Referencia de mensajes y ejemplos: [Contratos reducidos v2](../Contratos_reducidos_v2.md).
+
 Fecha: 16/10/2026. Alcance académico: GET_CATALOGO, RESERVAR_STOCK y CONFIRMAR_RESERVA.
 Este documento define trabajo pendiente; no acredita código implementado ni SQL aplicado.
 No leer `entrega-01`. Ver también [handoff 2 v2](02_confirmar_liberar_reserva_v2.md).

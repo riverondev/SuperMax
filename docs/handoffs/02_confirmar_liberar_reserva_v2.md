@@ -1,5 +1,7 @@
 # Handoff 2 v2 — Confirmar o liberar una reserva
 
+Referencia de mensajes y ejemplos: [Contratos reducidos v2](../Contratos_reducidos_v2.md).
+
 Fecha: 16/10/2026. Implementación académica del tercer servicio de SuperMax.
 Este documento define trabajo pendiente; no acredita código implementado ni SQL aplicado.
 No leer `entrega-01`. Ver [handoff 1 v2](01_reservar_stock_v2.md) para el esquema e integración.

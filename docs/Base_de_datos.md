@@ -1,5 +1,7 @@
 # Base de datos de SuperMax: estado real y propuesta para reservas
 
+> El modelo de reservas de este documento es histórico. Para el alcance reducido usar [Contratos v2](Contratos_reducidos_v2.md) y [SQL v2](../db/002_reservas_v2.sql). El nuevo script no migra tablas existentes; su creación no implica que se haya ejecutado en PostgreSQL.
+
 Revisión del 03/10/2026. Se consultó directamente PostgreSQL en modo de solo lectura usando la conexión de `Bd.java`: `localhost:5432`, base `supermax`. Motor: PostgreSQL 18.4.
 
 Actualización del 16/10/2026: se volvió a consultar el esquema en modo de solo lectura; continúa existiendo únicamente `producto`, con las mismas columnas y restricciones y tres filas. Las tablas propuestas siguen pendientes de aplicar. Para el reparto definitivo de servicios, reintentos, vencimiento y orden de bloqueos, consultar [estado y acuerdos compartidos](Estado_actual.md) y sus dos handoffs.
