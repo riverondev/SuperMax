@@ -1,109 +1,62 @@
-# Estado y acuerdos del MVP — 16/10/2026
+# Estado de SuperMax — 17/10/2026
 
-> Actualización de alcance: usar [Contratos reducidos v2](Contratos_reducidos_v2.md) y los handoffs v2. El estado y los acuerdos siguientes son una revisión anterior: ya se adaptaron las entidades y se creó el SQL v2, pero DAO, servicios e integración siguen pendientes. No se volvió a verificar aquí el esquema real de PostgreSQL.
+Referencia vigente: [contratos reducidos v2](Contratos_reducidos_v2.md). Este documento describe el código integrado; los handoffs son encargos de trabajo y los diseños originales se conservan como antecedentes.
 
-Documento compartido para desarrollar los servicios 2 y 3 de SuperMax en paralelo. Distingue implementación existente y decisiones para el siguiente incremento. No se leyó `entrega-01`.
+## Implementación actual
 
-## Estado verificado
-
-| Componente | Situación actual |
+| Componente | Estado |
 | --- | --- |
-| SuperMax | Java 8, Maven, JDBC PostgreSQL 42.7.4, json-simple 1.1.1. |
-| Arranque | `fpuna.supermax.Main` inicia `TCPMultiServer`; puerto 5001 o primer argumento. FQN coherente con el POM. |
-| Transporte | Un hilo por conexión; un objeto JSON por línea en UTF-8; una solicitud y respuesta por socket. |
-| GET_CATALOGO | Único servicio implementado. `TCPServerHilo` → `CatalogoServicio` → `ProductoDAO` → PostgreSQL. |
-| Validación del catálogo | `sku` debe ser cadena; `""` consulta catálogo completo. Espacios no equivalen a cadena vacía. |
-| Respuesta del catálogo | Lista de productos con precio y stock, `ok`, `requestId`, `timestamp`. Una lista vacía también devuelve `ok: true`. |
-| Error de BD | `ProductoDAO` propaga `SQLException`; el servidor devuelve `ERROR_BD`. Ya no se confunde con una lista vacía. |
-| EntregaYa | `Main` realiza una consulta GET_CATALOGO y termina. Host, puerto, sucursalId y SKU se reciben como argumentos; valores predeterminados: 127.0.0.1, 5001, SUC-01 y ARROZ-1K. Genera UUID y comprueba requestId. Los errores del servidor, conexión o parseo pueden terminar el programa. |
-| PostgreSQL | La última consulta documentada del 16/10/2026 encontró únicamente `public.producto`, con 3 filas. Esta revisión posterior al pull no volvió a consultar la base; verificar su estado antes de probar reservas. |
-| Entidades de reservas | Existen `entidad/Reserva.java` y `entidad/ReservaItem.java`. Reserva contiene identificadores, estado, fechas OffsetDateTime y List<ReservaItem>; cada item contiene reservaId, sku y cantidad. |
-| DAO de creación | Existe `bd/ReservaStockDAO.java`: búsqueda por requestId con items, lectura de items, bloqueo de productos por SKU, hora de PostgreSQL, disponibilidad, inserción de cabecera/items y detección del conflicto de unicidad de requestId. Recibe Connection; no coordina la transacción ni reemplaza la validación del servicio. |
-| Servicios de reservas | Todavía no existen `ReservaStockServicio`, `GestionReservaServicio` ni `GestionReservaDAO`. El servidor sigue admitiendo únicamente GET_CATALOGO. No se encontraron pruebas ni fixtures de reservas en src. |
-| SQL de reservas | `002_reservas_propuesta.sql` está disponible. Su aplicación sigue pendiente según la última revisión documentada de la base; no se verificó nuevamente en esta actualización. |
-| Verificación de esta actualización | Inspección de código, SQL, documentación y estado Git después del pull, con HEAD en `ffb431d` (agrega ReservaStockDAO). No se ejecutaron compilación, pruebas ni consultas a PostgreSQL. |
+| Arranque | Main inicia TCPMultiServer; puerto 5001 o primer argumento. |
+| Transporte | Un hilo por conexión, UTF-8, un objeto JSON por línea y una respuesta por socket. |
+| GET_CATALOGO | Integrado: catálogo completo con sku vacío o filtrado; devuelve disponibilidad, precio y timestamp. Lista vacía es éxito. |
+| RESERVAR_STOCK | Integrado: valida pedido e ítems, bloquea productos, consulta disponibilidad e inserta cabecera y detalles juntos. |
+| CONFIRMAR_RESERVA | Integrado: CONFIRMAR descuenta una sola vez; LIBERAR cambia el estado sin sumar stock físico. |
+| Persistencia | ProductoDAO, ReservaStockDAO, GestionReservaDAO y su auxiliar GestionReservaConsultas. |
+| Entidades | Reserva con ID Integer, pedido externo, estado e ítems; ReservaItem con ID Integer, SKU y cantidad. Sin fechas ni requestId persistido. |
+| Errores | ValidacionException representa errores de validación y rechazos de negocio; los servicios la convierten en respuestas JSON. En reservas, texto, items y DAO comparten un único try/catch. SQLException llega al dispatcher como ERROR_BD sin detalles internos. |
+| Validación TCP | requestId se valida antes de tipo y también en los tres servicios: cadena no vacía/blanca de hasta 100 caracteres. SKU ausente/null o vacío/blanco dentro de items produce CAMPO_REQUERIDO; tipo incorrecto o longitud excesiva produce SOLICITUD_INVALIDA. Catálogo permite sku vacío y rechaza sku ausente/null con SOLICITUD_INVALIDA. |
+| Respuestas | Los tres servicios incluyen timestamp en respuestas exitosas, no en errores. Representa la hora de respuesta, no un vencimiento de reserva. |
+| Cliente de pruebas | ClienteJson permite enviar texto JSON por línea, muestra respuestas y continúa ante fallos de conexión sin reintentar. |
+| Fuera de alcance | GET_PREPARACION, ALERTA_STOCK/UDP, pagos y cambios en EntregaYa. |
 
-`producto` tiene `sku VARCHAR(50)` PK, `nombre VARCHAR(150)`, `precio BIGINT >= 0` y `stock INTEGER >= 0`; todos NOT NULL, sin defaults. Ver [modelo y propuesta SQL](Base_de_datos.md).
+## Reglas acordadas e implementadas
 
-Antes de esta edición documental, `git status --short` de SuperMax no mostró cambios locales pendientes. Cada desarrollador debe revisar su diff antes de trabajar y conservar cambios ajenos; no se revisó el estado Git de EntregaYa en esta actualización. No tomar documentos históricos del 02/10 como descripción del código actual si contradicen esta revisión.
+- producto.stock es físico; el stock del catálogo es disponibilidad.
+- Disponibilidad = físico menos cantidades de reservas RESERVADA.
+- Crear no descuenta físico. Confirmar cambia a CONFIRMADA y descuenta dentro de la misma transacción. Liberar cambia a LIBERADA y no modifica físico.
+- Repetir la acción compatible sobre un estado final es éxito sin cambios; la acción opuesta produce ESTADO_INVALIDO.
+- No hay vencimiento, EXPIRADA, UUID de reserva ni deduplicación de creaciones. Reenviar RESERVAR_STOCK puede crear otra reserva.
+- Cada DAO de escritura abre una conexión propia y controla READ_COMMITTED, autoCommit=false, commit y rollback. Sus consultas usan esa misma conexión.
+- Orden de bloqueo: productos por SKU y luego cabecera de reserva existente. Los ítems persistidos son inmutables.
+- El catálogo consulta disponibilidad con una sentencia agregada por llamada.
+- Se priorizan claridad y métodos breves. Las 100 líneas fueron una referencia de sencillez, no un límite obligatorio ni un motivo para dividir clases artificialmente.
 
-### Próximo trabajo del handoff 2
+## Base de datos y preparación
 
-1. Crear `bd/GestionReservaDAO.java`: leer cabecera por reservaId e items, bloquear productos por SKU y luego reserva, obtener clock_timestamp(), descontar stock con condición stock >= cantidad y actualizar estado. Todos los métodos usan la Connection de la operación.
-2. Crear `servicio/GestionReservaServicio.java`: validar solicitud, coordinar READ_COMMITTED y autoCommit=false, resolver estados/reintentos/vencimiento y construir la respuesta. Persistir EXPIRADA con commit aunque la respuesta sea RESERVA_EXPIRADA; hacer rollback y propagar los fallos SQL.
-3. Preparar una base exclusiva de pruebas, verificar/aplicar allí el esquema y crear fixtures propios. Ejecutar los casos de aceptación y concurrencia del handoff 2.
-4. Entregar al integrador el fragmento TCP y los resultados de pruebas, sin modificar por cuenta propia los archivos asignados al handoff 1.
+Modelo vigente: [Base_de_datos.md](Base_de_datos.md).
+La consulta de solo lectura realizada durante esta sesión verificó las columnas v2 de producto, reserva y reserva_item en la base local. Esa consulta no acredita que se hayan verificado todas las restricciones, ni fija cantidades actuales de filas o stocks.
 
-Las entidades Reserva y ReservaItem ya incorporadas pueden utilizarse sin modificarlas. El DAO del handoff 2 permanece independiente de ReservaStockDAO. La guía de buscarPorReservaId mostrada en la conversación todavía no está implementada en el repositorio.
+En una base nueva usar 001_producto.sql y 002_reservas_v2.sql; seed opcional 003_seed_productos_v2.sql. No repetir DDL sobre tablas existentes ni aplicar el antiguo 002_reservas_propuesta.sql como migración. No se ejecutó DDL ni se reiniciaron datos durante esta actualización documental.
 
-## Acuerdos para los dos desarrolladores
+## Evidencia y pruebas pendientes
 
-Estas reglas definen el incremento de reservas. ReservaStockDAO implementa parte del acceso a datos; el flujo completo todavía está pendiente de servicios, integración y pruebas.
-
-1. Mantener el SQL de [002_reservas_propuesta.sql](../db/002_reservas_propuesta.sql): `reserva` y `reserva_item`. No agregar tablas de inventario, alertas ni pedidos externos.
-2. `producto.stock` representa stock físico. Crear una reserva no lo descuenta. Confirmar descuenta una sola vez. Liberar o vencer no lo incrementa.
-3. Disponibilidad = stock físico menos SUM de cantidades de reservas `RESERVADA` cuyo `expira_en` sea posterior al instante de evaluación. Reservas vencidas dejan de contar incluso si su estado almacenado sigue siendo `RESERVADA`.
-4. Estados finales: `CONFIRMADA`, `LIBERADA`, `EXPIRADA`. No reabrir reservas ni permitir acciones opuestas sobre estados finales.
-5. Vencimiento inicial: 300 segundos desde la creación. Persistir `expira_en`; no reiniciar el plazo por un reintento. Evaluar el vencimiento con la hora de PostgreSQL obtenida después de esperar bloqueos (`clock_timestamp()`), evitando basarse en la hora de inicio de una transacción que pudo esperar.
-6. SKU sensible a mayúsculas/minúsculas, igual que el catálogo actual. Rechazar SKUs repetidos en `items` con `SOLICITUD_INVALIDA`, en lugar de agruparlos implícitamente. Cantidades: enteros positivos dentro del rango de INTEGER; rechazar decimales y desbordamientos.
-7. `requestId` de creación es único y queda en `reserva.request_id`. Misma creación repetida con igual pedido y conjunto de items: devolver la reserva original con su estado actual y plazo restante, sin insertar ni renovar. Reutilizarlo con otro contenido: `REQUEST_ID_CONFLICTO`. El orden del array no altera la igualdad de los items.
-8. El requestId de confirmar/liberar se refleja en la respuesta, pero no reemplaza `reserva.request_id`, que pertenece a la creación. Para el MVP, el servicio 3 evita dobles efectos mediante estado de la reserva y acción repetida; no se agrega una tabla general de respuestas.
-9. Una operación completa usa una conexión JDBC propia, `autoCommit=false`, aislamiento `READ_COMMITTED`, commit al éxito y rollback al fallo. Los DAO de esa operación reciben la misma `Connection`; no abren una conexión por sentencia.
-10. JSON: conservar `tipo`, `requestId`, `ok`, `codigo`, `mensaje` y los nombres camelCase de v3. SQL conserva snake_case. Cada servicio expone `public JSONObject ejecutar(JSONObject solicitud) throws SQLException`, valida sus campos y devuelve el objeto de respuesta; el dispatcher serializa y gestiona errores de infraestructura. Es una convención simple para este MVP, no una API ya existente.
-
-## Orden único de bloqueos
-
-El objetivo es que puedan programar en paralelo y que el servidor siga atendiendo clientes concurrentes. Operaciones sobre filas compartidas sí pueden esperar brevemente en PostgreSQL.
-
-**Regla: productos en orden de SKU → reserva existente.** No usar un bloqueo global Java, de tabla o de toda la aplicación.
-
-- Servicio 2: bloquear filas de `producto` con `SELECT ... FOR UPDATE`, en orden ascendente de SKU; después consultar disponibilidad en una nueva sentencia bajo READ COMMITTED; insertar cabecera e items en la misma transacción. No bloquear reservas ajenas para sumar sus cantidades.
-- Servicio 3: leer primero reserva e items sin bloquear para identificar SKUs (los items son inmutables); bloquear los productos en el mismo orden; después bloquear la cabecera con `SELECT ... FOR UPDATE`. Releer estado y vencimiento después de adquirir los bloqueos antes de decidir. No eliminar ni editar los items existentes en ninguno de los servicios.
-- Para confirmar/liberar la misma reserva concurrentemente, la primera transición válida gana; la segunda lee el estado final y responde según las reglas de repetición. Dos confirmaciones solo descuentan una vez.
-- Cualquier limpieza futura que escriba estados deberá respetar el mismo orden. No implementar un proceso periódico para este MVP; la consulta por fecha ya libera disponibilidad al vencer.
-- Un bloqueo no reemplaza la transacción. Ante deadlock/timeout de bloqueo, rollback y respuesta de fallo controlada; el cliente puede reintentar. No ocultar el error como falta de stock.
-
-## Reparto y propiedad de archivos
-
-| Responsable | Archivos propios propuestos | Responsabilidad |
-| --- | --- | --- |
-| Handoff 1 | `servicio/ReservaStockServicio.java`, `bd/ReservaStockDAO.java` | Crear reservas e items, disponibilidad, repetición por requestId. |
-| Handoff 2 | `servicio/GestionReservaServicio.java`, `bd/GestionReservaDAO.java` | Confirmar/liberar, estados finales, vencimiento y descuento único. |
-| Handoff 1: integración | `server/TCPServerHilo.java`, `bd/ProductoDAO.java`, `servicio/CatalogoServicio.java`, SQL, POM si hacen falta dependencias de pruebas | Integrar ambos cases TCP, catálogo disponible, esquema y prueba conjunta. |
-| Ambos | Pruebas y fixtures con nombres propios | Cada uno prueba su servicio sin depender de que el otro haya terminado. |
-
-Los paths de clases son relativos a `src/main/java/fpuna/supermax/`. Los nombres son una propuesta de reparto. Evitar crear un `ReservaDAO.java` compartido o un DTO compartido que ambos editen simultáneamente. Cada implementación puede usar clases auxiliares propias si las necesita.
-
-Handoff 2 entrega el servicio y el fragmento de integración en su nota de entrega, sin modificar `TCPServerHilo`. Handoff 1 agrega primero su case y, después de incorporar la clase del compañero, agrega el segundo. Así ninguna rama necesita importar una clase que todavía no existe. `Main`, los servicios propios de EntregaYa, UDP y preparación de pedidos quedan fuera de alcance.
-
-## Errores y estados de respuesta
-
-Estos códigos complementan v3 para que ambos servicios coincidan; son decisiones de implementación del MVP, no comportamiento actual.
-
-| Código | Uso |
+| Verificación | Evidencia disponible |
 | --- | --- |
-| CAMPO_REQUERIDO | Falta un identificador obligatorio o está vacío. |
-| SOLICITUD_INVALIDA | Tipo/longitud inválidos, items vacíos, SKU repetido, cantidad no entera/positiva o acción distinta de CONFIRMAR/LIBERAR. |
-| PRODUCTO_NO_EXISTE | Algún SKU no existe. |
-| SIN_STOCK | Disponibilidad insuficiente para al menos un item; no crear nada. |
-| REQUEST_ID_CONFLICTO | El requestId de creación ya corresponde a otro contenido. |
-| RESERVA_NO_EXISTE | No existe reservaId. |
-| RESERVA_EXPIRADA | La reserva sigue reservada pero venció, o ya está EXPIRADA. |
-| ESTADO_INVALIDO | Acción incompatible con el estado final existente. |
-| ERROR_BD | Fallo SQL; no devolver datos parciales ni detalles internos al cliente. |
+| Compilación integrada | mvn -o package terminó con BUILD SUCCESS en esta sesión. |
+| Validación del servicio 3 | GestionReservaValidacion se ejecutó con resultado OK después del merge. No accede a BD. |
+| Integración del handoff 2 | El compañero informó resultados OK de confirmación, liberación, rollback y concurrencia en su base de pruebas; ver su nota de entrega. No se repitieron contra BD después del merge en esta revisión. |
+| Pruebas manuales TCP | El usuario informó que pudo probar los JSON con el cliente. No hay un registro detallado de todas las solicitudes y resultados. |
+| Cierre conjunto | Falta registrar creación y catálogo junto con gestión, creación concurrente sin sobreventa y rollback de creación. |
 
-Éxitos y errores incluyen el requestId de la solicitud actual si pudo leerse. Respuestas de error usan `ok: false`, `codigo`, `mensaje`; se conserva el formato de error actual del servidor.
+Las clases de comprobación tienen main y no las descubre automáticamente Maven. Instrucciones reproducibles: [nota del handoff 2](entrega_handoff_02_v2.md) y [README](../README.md).
+Los fixtures de integración vacían tablas exclusivamente en supermax_gestion_test; no usarlos en desarrollo.
 
-## Integración del catálogo y cierre conjunto
+## Reparto integrado y referencias
 
-Handoff 1 ajusta `ProductoDAO` para calcular disponibilidad mediante una sola consulta con agregación y LEFT JOIN, tanto para catálogo completo como filtrado. Evitar una consulta por producto. Mantener `stock` como nombre JSON de las unidades disponibles; catálogo vacío sigue siendo éxito y un producto sin unidades puede devolverse con stock 0.
+- [Handoff 1 v2](handoffs/01_reservar_stock_v2.md): creación, catálogo y dispatcher.
+- [Handoff 2 v2](handoffs/02_confirmar_liberar_reserva_v2.md): gestión y consultas auxiliares.
+- [Cliente JSON](Cliente_json.md): arranque y ejemplos con seed.
+- [Diseño original v3](SuperMax_v3.md): especificación histórica de cinco servicios.
+- Los handoffs originales con vencimiento y requestId persistido están reemplazados por v2.
 
-Comprobación conjunta mínima: 10 unidades físicas → reservar 3 → catálogo 7 y físico 10 → confirmar → catálogo 7 y físico 7. En escenarios separados, liberar o vencer una reserva de 3 devuelve disponibilidad 10 y mantiene físico 10. Agregar concurrencia y reintentos conforme a los handoffs.
-
-Cada uno puede trabajar en su rama del repositorio SuperMax; EntregaYa es otro repositorio. Aplicar el SQL una sola vez por base de desarrollo y usar una base exclusiva para pruebas que creen o borren datos. No borrar la tabla local producto ni ejecutar fixtures destructivos sobre `supermax`.
-
-## Handoffs
-
-- [1: Reservar stock e integración](handoffs/01_reservar_stock.md).
-- [2: Confirmar o liberar reserva](handoffs/02_confirmar_liberar_reserva.md).
-- [Contratos JSON v3](SuperMax_v3.md).
+No marcar la verificación conjunta como completa solo por compilar o por conservar resultados anteriores al merge.

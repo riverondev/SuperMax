@@ -5,7 +5,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import fpuna.supermax.entidad.ReservaException;
+import fpuna.supermax.entidad.ValidacionException;
 
 public class GestionReservaIntegracion {
     public static void main(String[] args) throws Exception {
@@ -24,7 +24,7 @@ public class GestionReservaIntegracion {
         try {
             dao.gestionarReserva(Integer.MAX_VALUE, "CONFIRMAR");
             throw new AssertionError("Acepto reserva inexistente");
-        } catch (ReservaException error) {
+        } catch (ValidacionException error) {
             GestionReservaFixture.comprobar("RESERVA_NO_EXISTE".equals(error.getCodigo()), "Codigo incorrecto");
         }
         id = GestionReservaFixture.crear(10, 10);
@@ -46,7 +46,7 @@ public class GestionReservaIntegracion {
         try {
             dao.gestionarReserva(id, accion);
             throw new AssertionError("Acepto accion incompatible");
-        } catch (ReservaException error) {
+        } catch (ValidacionException error) {
             GestionReservaFixture.comprobar("ESTADO_INVALIDO".equals(error.getCodigo()), "Codigo incorrecto");
         }
     }
@@ -93,7 +93,7 @@ public class GestionReservaIntegracion {
         inicio.await();
         try {
             return GestionReservaFixture.dao().gestionarReserva(id, accion).getEstado();
-        } catch (ReservaException error) {
+        } catch (ValidacionException error) {
             return error.getCodigo();
         }
     }

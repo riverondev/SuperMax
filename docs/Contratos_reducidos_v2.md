@@ -1,8 +1,8 @@
 # SuperMax — Contratos reducidos v2
 
-Fecha: 16/10/2026. Contrato acordado para implementar tres de los cinco servicios de SuperMax_v3.
+Contrato acordado el 16/10/2026; estado documental actualizado al 17/10/2026. Implementa tres de los cinco servicios de SuperMax_v3.
 Este documento es la referencia de mensajes para los handoffs v2. Sustituye sus ejemplos anteriores de reservas.
-Describe el comportamiento objetivo: las reservas todavía requieren adaptar el DAO, completar servicios e integrar TCP. No acredita pruebas ni aplicación del SQL.
+Los tres servicios ya están implementados e integrados por TCP. Este documento define mensajes y reglas; la evidencia de compilación, pruebas y comprobación de BD se registra en [Estado_actual.md](Estado_actual.md), sin dar por completa la verificación conjunta.
 
 ## Transporte y reglas comunes
 
@@ -44,7 +44,7 @@ Un SKU sin coincidencias produce éxito con lista vacía:
 {"ok":true,"requestId":"cat-03","productos":[],"timestamp":"2026-10-16T12:00:00-03:00"}
 ```
 Se conserva el formato actual, incluido timestamp. Un producto con disponibilidad cero puede aparecer.
-El cambio pendiente es calcular `stock` como disponibilidad: stock físico menos cantidades de reservas RESERVADA. `precio` continúa como entero.
+`stock` ya se calcula como disponibilidad tanto en catálogo completo como filtrado: stock físico menos cantidades de reservas RESERVADA. `precio` continúa como entero.
 
 ## 2. RESERVAR_STOCK — handoff 1
 
@@ -64,11 +64,12 @@ Entrada:
 ```
 Éxito:
 ```json
-{"ok":true,"requestId":"res-01","reservaId":1,"estado":"RESERVADA"}
+{"ok":true,"requestId":"res-01","reservaId":1,"estado":"RESERVADA","timestamp":"2026-10-17T12:00:00-03:00"}
 ```
 Validaciones:
 - `pedidoExternoId`: cadena no vacía de hasta 50 caracteres. Identifica el pedido externo; no es una FK ni un campo único.
 - `items`: array no vacío de objetos con SKU no vacío de hasta 50 caracteres y cantidad entera entre 1 y 2147483647.
+- Un SKU ausente, null, vacío o compuesto solo por espacios en un item produce `CAMPO_REQUERIDO`; un tipo incorrecto o más de 50 caracteres produce `SOLICITUD_INVALIDA`.
 - Rechazar cantidades decimales, cadenas numéricas, SKU duplicados y productos inexistentes.
 - Todos los productos deben tener disponibilidad suficiente. Guardar cabecera e ítems en una sola transacción; nunca una reserva parcial.
 
@@ -77,7 +78,7 @@ Ejemplo de stock insuficiente:
 {"ok":false,"requestId":"res-01","codigo":"SIN_STOCK","mensaje":"Stock insuficiente para ARROZ-1K"}
 ```
 `reservaId` es el entero generado por PostgreSQL. El cliente debe conservarlo para confirmar o liberar.
-No se devuelven pedidoExternoId, timestamp ni expiraEnSegundos. No hay vencimiento automático.
+Se devuelve timestamp con la fecha y hora de la respuesta y su desplazamiento UTC. No se devuelven pedidoExternoId ni expiraEnSegundos. No hay vencimiento automático; timestamp no indica un vencimiento.
 Reenviar incluso el mismo requestId puede crear otra reserva si hay disponibilidad; no se promete deduplicación.
 
 ## 3. CONFIRMAR_RESERVA — handoff 2
@@ -91,7 +92,7 @@ Confirmación:
 ```
 Éxito:
 ```json
-{"ok":true,"requestId":"conf-01","reservaId":1,"estado":"CONFIRMADA"}
+{"ok":true,"requestId":"conf-01","reservaId":1,"estado":"CONFIRMADA","timestamp":"2026-10-17T12:01:00-03:00"}
 ```
 Liberación (otra reserva, todavía RESERVADA):
 ```json
@@ -99,7 +100,7 @@ Liberación (otra reserva, todavía RESERVADA):
 ```
 Éxito:
 ```json
-{"ok":true,"requestId":"lib-01","reservaId":2,"estado":"LIBERADA"}
+{"ok":true,"requestId":"lib-01","reservaId":2,"estado":"LIBERADA","timestamp":"2026-10-17T12:02:00-03:00"}
 ```
 
 | Estado actual | CONFIRMAR | LIBERAR |
@@ -119,7 +120,7 @@ No hay EXPIRADA ni reapertura de reservas. Liberar nunca suma al stock físico.
 
 | Código | Cuándo se usa |
 | --- | --- |
-| CAMPO_REQUERIDO | Falta un identificador obligatorio o es una cadena vacía/blanca. |
+| CAMPO_REQUERIDO | requestId, tipo, pedidoExternoId, reservaId o accion ausente/null o cadena vacía/blanca; también SKU ausente/null o vacío/blanco dentro de items. |
 | SOLICITUD_INVALIDA | Tipos o límites incorrectos; items vacío, cantidades inválidas, SKU duplicados o acción no admitida. |
 | PRODUCTO_NO_EXISTE | Uno de los SKU de la reserva no existe. |
 | SIN_STOCK | Un producto no tiene disponibilidad suficiente. |
@@ -141,7 +142,7 @@ Ejemplo de error de infraestructura:
 ```json
 {"ok":false,"requestId":"res-03","codigo":"ERROR_BD","mensaje":"No se pudo completar la operacion"}
 ```
-No enviar detalles SQL internos. El dispatcher actual todavía clasifica algunos tipos incorrectos como CAMPO_REQUERIDO; ajustar esa distinción al integrar. Esta tabla es el contrato objetivo.
+No enviar detalles SQL internos. El dispatcher recupera requestId antes de validar tipo. Tanto el dispatcher como los tres servicios validan requestId como cadena no vacía/blanca de hasta 100 caracteres. Los servicios aplican las validaciones específicas de cada operación y convierten ValidacionException en respuestas de error; SQLException se propaga al dispatcher. En RESERVAR_STOCK, las validaciones de texto e items y la llamada al DAO están dentro de un único try/catch de ValidacionException. GET_CATALOGO mantiene su regla propia para SKU: la cadena vacía consulta todo el catálogo; un SKU ausente/null o de otro tipo produce SOLICITUD_INVALIDA. Las respuestas exitosas de los tres servicios incluyen timestamp; las respuestas de error no lo incluyen.
 
 ## Ejemplo completo de stock
 

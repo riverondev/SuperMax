@@ -3,7 +3,7 @@
 Referencia de mensajes y ejemplos: [Contratos reducidos v2](../Contratos_reducidos_v2.md).
 
 Fecha: 16/10/2026. Alcance académico: GET_CATALOGO, RESERVAR_STOCK y CONFIRMAR_RESERVA.
-Este documento define trabajo pendiente; no acredita código implementado ni SQL aplicado.
+Este documento conserva el encargo v2. Al 17/10/2026 el código de creación, catálogo e integración TCP está implementado; consultar [estado actual](../Estado_actual.md) para distinguir implementación y pruebas pendientes. Los pasos siguientes son la guía del encargo, no una lista actualizada de tareas sin hacer.
 No leer `entrega-01`. Ver también [handoff 2 v2](02_confirmar_liberar_reserva_v2.md).
 
 ## Contrato reducido compartido
@@ -47,9 +47,9 @@ El integrador prepara el SQL definitivo y lo comparte. Primero inspeccionar si y
 ## Organización y tamaño
 
 Usar Producto como referencia: entidades simples, consultas en DAO y validación/respuestas en servicio.
-Objetivo y límite de revisión para archivos Java nuevos: hasta 100 líneas físicas legibles por archivo.
-No juntar instrucciones, eliminar espacios o esconder lógica en SQL enorme para cumplir el límite.
-Si una clase no cabe, revisar el diseño antes de seguir; separar una responsabilidad real, sin crear frameworks ni clases por cada método.
+Priorizar archivos breves y legibles; unas 100 líneas son una referencia, no un límite obligatorio.
+No juntar instrucciones, eliminar espacios o esconder lógica en SQL enorme para acortar artificialmente el archivo.
+Separar una clase solo cuando exista una responsabilidad clara; no dividirla artificialmente para alcanzar un número de líneas ni crear frameworks o clases por cada método.
 Para que ambos trabajen sin editar un DAO grande compartido, usar ReservaStockDAO y GestionReservaDAO. Esta separación sustituye la idea preliminar de un único ReservaDAO.
 Cada DAO abre y cierra su conexión dentro de su operación pública; sus auxiliares reciben esa misma conexión.
 No abrir conexiones desde los servicios ni una conexión por consulta dentro de una reserva.
@@ -58,8 +58,8 @@ Archivos propios: servicio/ReservaStockServicio.java y bd/ReservaStockDAO.java.
 El integrador mantiene entidades, SQL, ProductoDAO y TCPServerHilo; el compañero recibe sus firmas y no las modifica simultáneamente.
 Servicio: public JSONObject ejecutar(JSONObject solicitud) throws SQLException.
 DAO: public Reserva crearReserva(String pedidoExternoId, List<ReservaItem> items) throws SQLException.
-Para fallos de negocio, acordar una pequeña ReservaException con codigo y mensaje, capturada por el servicio; SQLException se propaga al dispatcher. No devolver false indistintamente para falta de stock y fallo SQL.
-Compartir esa excepción antes del trabajo paralelo. Extraer validación o construcción de respuestas solo si evita repetición y ayuda al límite de tamaño.
+Para fallos de negocio, acordar una pequeña ValidacionException con codigo y mensaje, capturada por el servicio; SQLException se propaga al dispatcher. No devolver false indistintamente para falta de stock y fallo SQL.
+ValidacionException ya existe en entidad y se comparte entre ambos servicios. Extraer validación o respuestas solo cuando mejore la claridad y evite repetición.
 
 ## Implementación paso a paso
 
@@ -93,4 +93,4 @@ Usar una base exclusiva de pruebas, sin fixtures destructivos en supermax.
 - Fallo al insertar un ítem: rollback de toda la reserva.
 - Integración con handoff 2: confirmar deja físico/disponible 7; liberar en otro escenario devuelve disponibilidad 10.
 Ejecutar mvn package y registrar resultados reales. Un build no sustituye las comprobaciones de BD.
-Entregar código legible, SQL reproducible, ejemplos TCP y lista breve de pruebas pasadas/pendientes. Revisar el límite de 100 líneas antes de dar cada archivo nuevo por terminado.
+Entregar código legible, SQL reproducible, ejemplos TCP y lista breve de pruebas pasadas/pendientes. Revisar claridad y responsabilidades sin imponer un límite de líneas.

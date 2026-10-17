@@ -5,7 +5,7 @@ import java.sql.SQLException;
 import java.util.List;
 import fpuna.supermax.entidad.Reserva;
 import fpuna.supermax.entidad.ReservaItem;
-import fpuna.supermax.entidad.ReservaException;
+import fpuna.supermax.entidad.ValidacionException;
 
 public class GestionReservaDAO {
     interface Conexion {
@@ -25,7 +25,7 @@ public class GestionReservaDAO {
 
     public Reserva gestionarReserva(int reservaId, String accion) throws SQLException {
         if (!"CONFIRMAR".equals(accion) && !"LIBERAR".equals(accion)) {
-            throw new ReservaException("SOLICITUD_INVALIDA", "Accion no admitida");
+            throw new ValidacionException("SOLICITUD_INVALIDA", "Accion no admitida");
         }
         try (Connection conn = conexion.abrir()) {
             conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
@@ -33,7 +33,7 @@ public class GestionReservaDAO {
             try {
                 Reserva inicial = consultas.leerReserva(conn, reservaId, false);
                 if (inicial == null) {
-                    throw new ReservaException("RESERVA_NO_EXISTE", "No existe la reserva indicada");
+                    throw new ValidacionException("RESERVA_NO_EXISTE", "No existe la reserva indicada");
                 }
                 List<ReservaItem> items = consultas.leerItems(conn, reservaId);
                 if (items.isEmpty()) {
@@ -69,7 +69,7 @@ public class GestionReservaDAO {
                     && !"LIBERADA".equals(reserva.getEstado())) {
                 throw new SQLException("Estado de reserva desconocido");
             }
-            throw new ReservaException("ESTADO_INVALIDO", "La accion contradice el estado de la reserva");
+            throw new ValidacionException("ESTADO_INVALIDO", "La accion contradice el estado de la reserva");
         }
         if ("CONFIRMAR".equals(accion)) {
             String sql = "UPDATE public.producto SET stock = stock - ? WHERE sku = ? AND stock >= ?";

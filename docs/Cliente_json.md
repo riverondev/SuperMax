@@ -6,7 +6,7 @@ Abre una conexion por solicitud, usa UTF-8 y espera hasta 5 segundos al conectar
 
 Desde la carpeta SuperMax, compilar:
 ```powershell
-mvn package
+mvn clean package
 ```
 En una terminal, iniciar el servidor:
 ```powershell

@@ -1,118 +1,74 @@
-# Base de datos de SuperMax: estado real y propuesta para reservas
+# Base de datos de SuperMax — modelo reducido v2
 
-> El modelo de reservas de este documento es histórico. Para el alcance reducido usar [Contratos v2](Contratos_reducidos_v2.md) y [SQL v2](../db/002_reservas_v2.sql). El nuevo script no migra tablas existentes; su creación no implica que se haya ejecutado en PostgreSQL.
+Actualización: 17/10/2026. Modelo utilizado por los tres servicios integrados. Referencia: [contratos v2](Contratos_reducidos_v2.md).
 
-Revisión del 03/10/2026. Se consultó directamente PostgreSQL en modo de solo lectura usando la conexión de `Bd.java`: `localhost:5432`, base `supermax`. Motor: PostgreSQL 18.4.
+## Esquema vigente
 
-Actualización del 16/10/2026: se volvió a consultar el esquema en modo de solo lectura; continúa existiendo únicamente `producto`, con las mismas columnas y restricciones y tres filas. Las tablas propuestas siguen pendientes de aplicar. Para el reparto definitivo de servicios, reintentos, vencimiento y orden de bloqueos, consultar [estado y acuerdos compartidos](Estado_actual.md) y sus dos handoffs.
+| Tabla | Columna | Tipo y reglas del SQL |
+| --- | --- | --- |
+| producto | sku | VARCHAR(50), PK, NOT NULL. |
+| producto | nombre | VARCHAR(150), NOT NULL. |
+| producto | precio | BIGINT, NOT NULL, CHECK >= 0. |
+| producto | stock | INTEGER, NOT NULL, CHECK >= 0; existencias físicas. |
+| reserva | reserva_id | SERIAL PRIMARY KEY; generado por PostgreSQL. |
+| reserva | pedido_externo_id | VARCHAR(50), NOT NULL; no es FK ni UNIQUE. |
+| reserva | estado | VARCHAR(20), NOT NULL, DEFAULT RESERVADA; CHECK permite RESERVADA, CONFIRMADA y LIBERADA. |
+| reserva_item | reserva_id | INTEGER, NOT NULL, FK a reserva. |
+| reserva_item | sku | VARCHAR(50), NOT NULL, FK a producto. |
+| reserva_item | cantidad | INTEGER, NOT NULL, CHECK > 0. |
 
-## Estructura existente verificada
+reserva_item tiene PK compuesta (reserva_id, sku) e índice adicional por sku. Las FK no tienen borrado en cascada. Una reserva tiene varios ítems; un SKU aparece una vez por reserva. El servicio rechaza SKU repetidos, cantidades inválidas y listas vacías antes de escribir.
 
-La única tabla de usuario encontrada es **public.producto** (singular). No existen todavía `reserva` ni `reserva_item`.
+La FK no garantiza por sí sola que una cabecera tenga detalles: la operación crea cabecera e ítems en una sola transacción. Los ítems no se modifican después de crear la reserva.
 
-| Columna | Tipo real | Nulos | Regla |
+No hay request_id, creada_en ni expira_en. requestId pertenece al mensaje y solo se refleja en la respuesta. pedido_externo_id referencia un pedido de otra organización sin vincular bases mediante una FK.
+
+## Correspondencia con Java
+
+- Reserva: Integer reservaId, String pedidoExternoId, String estado y List<ReservaItem> items.
+- ReservaItem: Integer reservaId, String sku e Integer cantidad.
+- Producto conserva String sku/nombre, Long precio e Integer stock.
+- El ID nace en INSERT ... RETURNING reserva_id y se utiliza para todos los detalles. No se genera UUID.
+
+## Stock y estados
+
+Disponible = producto.stock menos SUM de cantidades asociadas a reservas RESERVADA. COALESCE convierte una suma ausente en cero.
+
+| Operación | Estado final | Físico | Disponibilidad |
 | --- | --- | --- | --- |
-| sku | VARCHAR(50) | No | Clave primaria `pk_sku`. |
-| nombre | VARCHAR(150) | No | Obligatorio. |
-| precio | BIGINT | No | `ck_precio_positivo`: precio >= 0; admite cero. |
-| stock | INTEGER | No | `ck_stock_no_negativo`: stock >= 0. |
+| Reservar 3 con físico 10 | RESERVADA | 10 | 7 |
+| Confirmar esa reserva | CONFIRMADA | 7 | 7 |
+| Repetir confirmación | CONFIRMADA | 7 | 7 |
+| Liberar 3 en un escenario independiente con físico 10 | LIBERADA | 10 | 10 |
 
-No hay valores por defecto en estas columnas. El índice existente es el B-tree único de la clave primaria `pk_sku`. La tabla tiene tres filas; no se encontraron precios ni stocks negativos.
+No existe vencimiento automático. Una reserva abandonada sigue reteniendo unidades hasta liberarse. Reenviar una creación puede generar otra reserva; no hay deduplicación por requestId ni pedido externo.
 
-La definición SQL equivalente está en [`../db/001_producto.sql`](../db/001_producto.sql). Está destinada a inicializar una base vacía: no debe aplicarse de nuevo sobre la tabla local existente.
+## Transacciones
 
-## Propuesta mínima para RESERVAR_STOCK
+ReservaStockDAO y GestionReservaDAO abren y cierran su conexión; coordinan READ_COMMITTED, autoCommit=false, commit y rollback. Los métodos auxiliares reciben esa misma conexión.
 
-Mantener `producto` y agregar dos tablas. El SQL propuesto está en [`../db/002_reservas_propuesta.sql`](../db/002_reservas_propuesta.sql); **no se aplicó** a PostgreSQL.
+1. Para crear: bloquear todos los productos en orden de SKU, después consultar disponibilidad en nuevas sentencias; insertar cabecera e ítems solo si alcanza para todos.
+2. Para gestionar: leer ítems, bloquear productos en el mismo orden y luego bloquear/releer cabecera. Confirmar descuenta físico y cambia estado en la misma transacción; liberar solo cambia estado.
+3. Repetir una acción compatible no produce nuevos efectos. Una acción opuesta sobre estado final es ESTADO_INVALIDO.
+4. Ante fallos, revertir la operación completa. Las restricciones SQL complementan las comprobaciones; no reemplazan los bloqueos.
+5. ProductoDAO calcula disponibilidad con una consulta agregada por llamada para obtener una lectura consistente del catálogo.
 
-### reserva
+## Scripts y seed
 
-| Columna | Tipo propuesto | Propósito |
-| --- | --- | --- |
-| reserva_id | VARCHAR(50), PK | Identificador generado por Java, por ejemplo `RES-` más un UUID. |
-| request_id | VARCHAR(100), UNIQUE, NOT NULL | Reconocer un reintento de la misma solicitud sin reservar dos veces. |
-| pedido_externo_id | VARCHAR(50), NOT NULL | Referencia al pedido de EntregaYa; no es una FK a otra base. |
-| estado | VARCHAR(20), NOT NULL | `RESERVADA`, `CONFIRMADA`, `LIBERADA` o `EXPIRADA`; inicial `RESERVADA`. |
-| creada_en | TIMESTAMPTZ, NOT NULL | Fecha de creación; valor por defecto `CURRENT_TIMESTAMP`. |
-| expira_en | TIMESTAMPTZ, NOT NULL | Vencimiento persistente, posterior a la creación. El servicio calcula inicialmente 300 segundos, según el ejemplo del contrato. |
+En una base nueva, ejecutar en orden:
 
-Las longitudes de los identificadores son decisiones propuestas para el MVP; los contratos no fijan esos límites. El servicio deberá validarlos. No se impone unicidad de `pedido_externo_id`: una solicitud nueva puede crear otra reserva para un pedido cuya reserva anterior haya vencido. Una regla de una sola reserva activa por pedido debe definirse si luego se necesita.
+1. [001_producto.sql](../db/001_producto.sql).
+2. [002_reservas_v2.sql](../db/002_reservas_v2.sql).
+3. [003_seed_productos_v2.sql](../db/003_seed_productos_v2.sql), opcional.
 
-Guardar `request_id` es una decisión de persistencia para reintentos TCP, aunque el campo nace como metadato del protocolo. La restricción UNIQUE por sí sola no implementa idempotencia: Java debe devolver la reserva existente cuando la solicitud repetida tiene el mismo contenido y rechazar la reutilización del identificador con otro pedido o conjunto de items. No se debe renovar el vencimiento ni volver a reservar stock al repetir la solicitud.
+No repetir los CREATE TABLE sobre tablas existentes. Los scripts son de inicialización, no una migración desde el esquema anterior. Si ya existe otra estructura, inspeccionarla y preparar una migración que preserve datos.
 
-### reserva_item
+El seed agrega cuatro productos DEMO-* mediante ON CONFLICT DO NOTHING. No sobrescribe precios, nombres ni stocks existentes y no reinicia datos. Su SELECT final muestra stock físico; GET_CATALOGO muestra disponibilidad.
 
-| Columna | Tipo propuesto | Propósito |
-| --- | --- | --- |
-| reserva_id | VARCHAR(50), FK | Reserva a la que pertenece el item. |
-| sku | VARCHAR(50), FK | Producto reservado; mismo tipo y longitud que la columna real. |
-| cantidad | INTEGER, NOT NULL, CHECK > 0 | Unidades reservadas de ese producto. |
+## Estado de verificación y antecedente
 
-La clave primaria es **(reserva_id, sku)**: un producto aparece una vez en cada reserva. Para este MVP, Java rechazará SKUs repetidos con SOLICITUD_INVALIDA. El índice adicional por `sku` ayuda a calcular reservas de un producto. Las FKs impiden items sin reserva o sin producto. Se usa la conducta predeterminada de las FKs para evitar borrar accidentalmente productos o reservas referenciados.
+Durante esta sesión se consultaron en modo de solo lectura las columnas de la base local supermax y se verificó que coinciden con v2, incluido el ID entero con secuencia y el estado por defecto. No se repitió aquí una inspección completa de restricciones ni se publican conteos de filas que puedan quedar obsoletos.
 
-Una reserva válida debe tener al menos un item: el servicio valida que `items` no esté vacío y crea cabecera e items en una sola transacción. Una FK sola no garantiza que toda cabecera tenga items.
+El diseño anterior incluía ID de texto, request_id único, fechas y EXPIRADA. Su [SQL propuesto original](../db/002_reservas_propuesta.sql) se conserva como antecedente y no debe aplicarse para v2. Las antiguas revisiones que encontraron únicamente producto describían una etapa anterior, no el esquema actual.
 
-```mermaid
-erDiagram
-    PRODUCTO ||--o{ RESERVA_ITEM : "se reserva en"
-    RESERVA ||--|{ RESERVA_ITEM : contiene
-
-    PRODUCTO {
-        varchar50 sku PK
-        varchar150 nombre
-        bigint precio
-        integer stock
-    }
-
-    RESERVA {
-        varchar50 reserva_id PK
-        varchar100 request_id UK
-        varchar50 pedido_externo_id
-        varchar20 estado
-        timestamptz creada_en
-        timestamptz expira_en
-    }
-
-    RESERVA_ITEM {
-        varchar50 reserva_id PK,FK
-        varchar50 sku PK,FK
-        integer cantidad
-    }
-```
-
-## Regla de stock propuesta
-
-Para respetar el contrato de confirmar/liberar, **producto.stock representa existencias físicas**. Crear una reserva no modifica ese campo. Las unidades disponibles se calculan restando las cantidades de reservas con estado `RESERVADA` y vencimiento futuro:
-
-`disponible = producto.stock - unidades en reservas activas no vencidas`
-
-Ejemplo: si hay 10 unidades físicas y una reserva activa por 3, hay 7 disponibles. Al confirmar esa reserva, el stock físico pasa a 7 y la reserva pasa a `CONFIRMADA`; la disponibilidad sigue siendo 7. Al liberar o vencer la reserva sin confirmar, el stock físico continúa en 10 y las 3 unidades dejan de bloquear la disponibilidad.
-
-| Operación | Reserva | producto.stock |
-| --- | --- | --- |
-| Reservar | Crear `RESERVADA` e items. | No cambia. |
-| Confirmar antes del vencimiento | Cambiar a `CONFIRMADA`. | Descontar cantidades una sola vez. |
-| Liberar | Cambiar a `LIBERADA` si aún está reservada. | No cambia. |
-| Vencer | Dejar de contar como activa; puede marcarse `EXPIRADA`. | No cambia. |
-
-El vencimiento no ocurre automáticamente por tener una columna de fecha. Para el MVP alcanza con excluir reservas vencidas al calcular disponibilidad y rechazar su confirmación; el servicio puede marcar `EXPIRADA` cuando las consulta. No hace falta un proceso periódico para que las unidades vuelvan a estar disponibles con esta estrategia.
-
-**Impacto en GET_CATALOGO:** al incorporar reservas, el `stock` enviado al cliente debe ser la disponibilidad calculada, en lugar de leer directamente el stock físico como hace hoy `ProductoDAO`. El nombre del campo JSON se conserva.
-
-## Transacciones necesarias en Java
-
-1. Validar `pedidoExternoId`, `requestId` e items: cantidades enteras positivas, SKUs existentes y lista no vacía.
-2. Abrir una transacción JDBC. Bloquear con `SELECT ... FOR UPDATE` las filas de los productos involucrados, siempre en orden de SKU para reducir deadlocks.
-3. Después de adquirir los bloqueos, consultar la disponibilidad con una nueva sentencia bajo `READ COMMITTED` y comprobar todos los items. Si falta stock para alguno, hacer rollback sin crear una reserva parcial.
-4. Insertar la reserva y todos sus items, y hacer commit. Manejar un conflicto de `request_id` como reintento, consultando la reserva original después del rollback.
-5. Para confirmar, también usar transacción y bloqueos: validar el estado y vencimiento y descontar stock junto con el cambio a `CONFIRMADA`. Solo una transición desde `RESERVADA` puede efectuar ese descuento. Toda operación que descuente stock debe seguir el mismo protocolo de bloqueo de productos.
-
-El orden acordado es productos en orden de SKU y después la cabecera de reserva existente. Confirmar/liberar identifica primero los SKUs sin bloquear, bloquea productos y luego reserva; relee el estado y obtiene la hora de PostgreSQL después de esperar los bloqueos. Ver el detalle en [los acuerdos compartidos](Estado_actual.md). Los CHECK de stock/cantidad no reemplazan la comprobación de disponibilidad ni el control de concurrencia.
-
-## Alcance del MVP y validación
-
-Estas dos tablas cubren reservas de varios productos, vencimiento y el posterior servicio de confirmar/liberar. No se agregan tablas de inventario, catálogo, alertas o pedidos de EntregaYa.
-
-Se verificó la estructura y las restricciones existentes mediante `psql` y consultas de catálogo, en modo de solo lectura. Los scripts nuevos son propuestas locales: no se ejecutó DDL, no se cambiaron datos y todavía falta validar el servicio y las transacciones mediante pruebas de integración cuando se implementen.
-
-Referencias: [contratos v3](SuperMax_v3.md), [restricciones de PostgreSQL](https://www.postgresql.org/docs/current/ddl-constraints.html) y [bloqueos de filas](https://www.postgresql.org/docs/current/explicit-locking.html).
+Para pruebas con TRUNCATE, usar solo supermax_gestion_test. Ver [estado y evidencia](Estado_actual.md) y [reproducción de pruebas](entrega_handoff_02_v2.md). Esta edición documental no ejecutó SQL ni modificó datos.

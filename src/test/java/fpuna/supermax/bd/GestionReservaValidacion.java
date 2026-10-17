@@ -4,7 +4,7 @@ import java.sql.SQLException;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import fpuna.supermax.entidad.Reserva;
-import fpuna.supermax.entidad.ReservaException;
+import fpuna.supermax.entidad.ValidacionException;
 import fpuna.supermax.servicio.GestionReservaServicio;
 
 public class GestionReservaValidacion {
@@ -50,7 +50,7 @@ public class GestionReservaValidacion {
         GestionReservaServicio negocio = new GestionReservaServicio(new GestionReservaDAO() {
             @Override
             public Reserva gestionarReserva(int id, String accion) {
-                throw new ReservaException("RESERVA_NO_EXISTE", "No existe");
+                throw new ValidacionException("RESERVA_NO_EXISTE", "No existe");
             }
         });
         comprobar("RESERVA_NO_EXISTE".equals(negocio.ejecutar(json("\"r\"", "1", "\"LIBERAR\""))

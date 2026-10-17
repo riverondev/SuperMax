@@ -3,7 +3,7 @@
 Referencia de mensajes y ejemplos: [Contratos reducidos v2](../Contratos_reducidos_v2.md).
 
 Fecha: 16/10/2026. Implementación académica del tercer servicio de SuperMax.
-Este documento define trabajo pendiente; no acredita código implementado ni SQL aplicado.
+Este documento conserva el encargo v2. Al 17/10/2026 gestión y su case TCP están integrados; ver [estado actual](../Estado_actual.md) y [nota de entrega](../entrega_handoff_02_v2.md) para la evidencia y pruebas pendientes. Los pasos siguientes describen el encargo original.
 No leer `entrega-01`. Ver [handoff 1 v2](01_reservar_stock_v2.md) para el esquema e integración.
 
 ## Acuerdo reducido
@@ -47,14 +47,14 @@ El integrador prepara el esquema común y las entidades. No migrar datos, recrea
 ## Responsabilidades y tamaño
 
 Archivos propios: servicio/GestionReservaServicio.java y bd/GestionReservaDAO.java.
-Objetivo y límite de revisión: hasta 100 líneas físicas legibles por archivo Java nuevo.
-No comprimir instrucciones ni crear una clase por método. Si se supera, simplificar o extraer una responsabilidad clara antes de continuar.
+Priorizar archivos breves y legibles; unas 100 líneas son una referencia, no un límite obligatorio.
+No comprimir instrucciones ni crear una clase por método. Separar responsabilidades cuando mejore la comprensión, no para cumplir un número de líneas.
 Se usan dos DAO de operación para evitar un DAO compartido grande y conflictos entre desarrolladores. No crear además un DAO por entidad.
 Servicio: public JSONObject ejecutar(JSONObject solicitud) throws SQLException.
 DAO: public Reserva gestionarReserva(int reservaId, String accion) throws SQLException.
 CONFIRMAR y LIBERAR comparten lectura, bloqueo y validación de estado dentro de esa operación.
 El DAO abre/cierra la conexión y controla commit/rollback; sus consultas auxiliares usan esa misma conexión. El servicio valida JSON y construye respuestas.
-Usar la ReservaException pequeña acordada con el integrador para errores de negocio; capturarla en el servicio. Propagar SQLException para ERROR_BD.
+Usar la ValidacionException pequeña acordada con el integrador para errores de negocio; capturarla en el servicio. Propagar SQLException para ERROR_BD.
 No modificar TCPServerHilo, ProductoDAO, entidades ni SQL mientras el integrador trabaja en ellos; entregar el fragmento de integración.
 
 ## Estados
@@ -102,4 +102,4 @@ case "CONFIRMAR_RESERVA":
 ```
 Comprobar juntos catálogo: confirmar conserva disponibilidad 7 y deja físico 7; liberar en otro escenario devuelve disponibilidad 10 y mantiene físico 10.
 No incluir pagos, reembolsos, preparación, UDP ni modificaciones a EntregaYa. Comunicar al consumidor el contrato numérico de reservaId.
-Revisar el límite de 100 líneas y señalar qué falta antes de marcar el handoff terminado.
+Revisar claridad y responsabilidades, y señalar las pruebas pendientes antes de marcar el handoff terminado. No imponer un límite de líneas.

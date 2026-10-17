@@ -1,60 +1,68 @@
-# Confirmar y liberar — entrega parcial v2
+# Confirmar y liberar — entrega v2 y estado integrado
 
-Referencia: [handoff 02 v2](handoffs/02_confirmar_liberar_reserva_v2.md).
+Actualización documental: 17/10/2026. Referencias: [handoff 2 v2](handoffs/02_confirmar_liberar_reserva_v2.md), [estado actual](Estado_actual.md) y [contratos](Contratos_reducidos_v2.md).
 
-## Implementado
+## Implementación integrada
 
-- `GestionReservaServicio` (62 líneas): valida requestId, reservaId numérico y acción; arma la respuesta mínima y convierte ReservaException en error de negocio. Propaga SQLException al dispatcher.
-- `GestionReservaDAO` (85 líneas): abre/cierra conexión, usa READ_COMMITTED y autoCommit=false, controla estados, commit y rollback. Conserva el error original si falla rollback.
-- `GestionReservaConsultas` (75 líneas): auxiliar interna de SQL para separar acceso JDBC de coordinación transaccional. No abre conexiones ni inicia transacciones y no es un DAO por entidad.
-- `ReservaException` (15 líneas), en `entidad`: excepción de negocio con código y mensaje que faltaba en los archivos comunes; puede ser utilizada por el integrador.
+- GestionReservaServicio valida requestId, reservaId numérico y acción, arma respuestas y convierte ValidacionException en errores de negocio. Propaga SQLException.
+- GestionReservaDAO controla conexión, transacción READ_COMMITTED, estados, commit y rollback.
+- GestionReservaConsultas contiene consultas auxiliares y recibe la conexión de la operación.
+- ValidacionException, en entidad, comunica código y mensaje de negocio.
+- TCPServerHilo ya tiene el case CONFIRMAR_RESERVA; el DAO de creación y las entidades ya utilizan el esquema reducido.
 
-La operación lee cabecera e items, bloquea productos por SKU y luego bloquea/relee la cabecera. Confirmar descuenta cada item con condición stock >= cantidad; exige una fila actualizada. Liberar solo cambia el estado. Repetir la acción compatible no altera stock. No hay fechas, EXPIRADA ni persistencia de requestId.
+La gestión lee cabecera e ítems, bloquea productos por SKU y luego bloquea/relee la reserva. CONFIRMAR descuenta con condición stock >= cantidad y exige una fila actualizada; LIBERAR solo cambia estado. Repetir una acción compatible no altera stock. No hay fechas, EXPIRADA ni persistencia de requestId.
 
-## Pruebas y límites reales
+## Resultados informados por el compañero antes de integrar
 
-Se ejecutaron `GestionReservaValidacion` y `GestionReservaIntegracion` con resultado OK:
+El compañero dejó constancia de resultados OK de GestionReservaValidacion y GestionReservaIntegracion:
 
-- IDs nulos, no positivos, fuera de rango, decimales, cadenas y booleanos; requestId inválido y acción inválida.
-- Respuesta mínima de cuatro campos, reflejo del requestId, errores de negocio y propagación SQL.
+- IDs nulos, no positivos, fuera de rango, decimales, cadenas y booleanos; requestId y acción inválidos.
+- Respuesta mínima, reflejo de requestId, errores de negocio y propagación SQL.
 - Confirmar 3 sobre físico 10 deja 7; repetir conserva 7.
-- Liberar y repetir conserva físico 10; acciones opuestas devuelven ESTADO_INVALIDO.
-- Reserva inexistente, varios productos y reserva sin items.
-- Fallo en el segundo descuento revierte también el primero y conserva RESERVADA.
-- Dos confirmaciones concurrentes descuentan una vez; confirmar y liberar concurrentemente dejan una única transición ganadora.
+- Liberar y repetir conserva físico 10; acciones opuestas producen ESTADO_INVALIDO.
+- Reserva inexistente, varios productos y reserva sin ítems.
+- Fallo en el segundo descuento revierte el primero y conserva RESERVADA.
+- Dos confirmaciones simultáneas descuentan una vez; confirmar y liberar simultáneamente dejan una transición ganadora.
 
-Se utilizó exclusivamente `supermax_gestion_test`, en una instancia PostgreSQL de pruebas en 127.0.0.1:55432. Se aplicaron allí `001_producto.sql` y `002_reservas_v2.sql`; no se aplicaron a la base de desarrollo. El fixture obtiene IDs con RETURNING y prepara los datos dentro de una transacción. TRUNCATE solo se usa en esa base exclusiva.
+Esos resultados corresponden a supermax_gestion_test en 127.0.0.1:55432, con 001_producto.sql y 002_reservas_v2.sql. No acreditan por sí solos la ejecución del flujo completo después del merge.
 
-El compilador generó clases compatibles con Java 8, pero emitió un error interno AccessDeniedException al cerrar json-simple en el repositorio Maven dentro del entorno restringido. Las pruebas llegaron a ejecutarse y pasaron, pero esto no acredita una compilación limpia. El script ahora detecta también ese diagnóstico aunque javac devuelva código cero, para no aceptar clases anteriores como verificación exitosa.
+En aquella etapa hubo errores de acceso del compilador y fallos del build global por código de creación aún anterior a v2. Son antecedentes resueltos en las compilaciones posteriores, no el estado actual.
 
-`mvn -o package` fue intentado y falló por referencias al modelo anterior en ReservaStockDAO (IDs String y campos requestId/fechas). También queda incompleto ReservaStockServicio. Estos archivos pertenecen al integrador y no se modificaron. No hay build global ni prueba TCP aprobados.
+## Verificación posterior al merge
 
-## Reproducción
+- mvn -o package terminó con BUILD SUCCESS en esta sesión.
+- GestionReservaValidacion se ejecutó con resultado OK después del merge.
+- El usuario informó pruebas manuales de mensajes TCP; falta registrar sus resultados detallados.
+- No se repitió GestionReservaIntegracion contra BD en esta revisión. Falta registrar la prueba conjunta con creación y catálogo.
 
-Desde SuperMax, usar un JDK 9 o posterior y las dependencias Maven locales:
+El antiguo scripts/verificar_gestion_v2.ps1 ya no está en el árbol de trabajo. Los comandos siguientes lo sustituyen; no requieren ese script ni un JDK 9 por diseño, pues el código es Java 8.
+
+## Reproducción actual desde PowerShell
+
+Desde la carpeta SuperMax, con JDK 8 o posterior y Maven:
 
 ```powershell
-./scripts/verificar_gestion_v2.ps1 -JdkHome 'RUTA_AL_JDK'
+mvn clean package
+java -cp "target/test-classes;target/supermax-1.0-SNAPSHOT.jar" fpuna.supermax.bd.GestionReservaValidacion
 ```
 
-Para PostgreSQL, preparar una base exclusiva llamada `supermax_gestion_test` con el SQL v2 y definir sus credenciales:
+Estas clases tienen main: Maven las compila pero no las ejecuta automáticamente.
+
+Para integración, crear una base exclusiva llamada supermax_gestion_test. Aplicar allí 001_producto.sql y 002_reservas_v2.sql solo si las tablas no existen. No hace falta seed: los fixtures preparan sus productos y reservas.
 
 ```powershell
-$env:GESTION_TEST_URL = 'jdbc:postgresql://127.0.0.1:55432/supermax_gestion_test'
-$env:GESTION_TEST_USER = 'gestion_test'
+$env:GESTION_TEST_URL = 'jdbc:postgresql://127.0.0.1:5432/supermax_gestion_test'
+$env:GESTION_TEST_USER = 'USUARIO_DE_PRUEBAS'
 $env:GESTION_TEST_PASSWORD = 'CLAVE_DE_LA_BASE_DE_PRUEBAS'
-./scripts/verificar_gestion_v2.ps1 -JdkHome 'RUTA_AL_JDK' -ConBase
+java -cp "target/test-classes;target/supermax-1.0-SNAPSHOT.jar" fpuna.supermax.bd.GestionReservaIntegracion
 ```
 
-El script acepta `-RepositorioMaven` si las dependencias no están en el repositorio predeterminado. No inicializa ni migra bases y las pruebas reemplazan datos únicamente en la base de pruebas indicada. No dependen de JUnit ni requieren cambiar el POM. Estas clases tienen main y se ejecutan explícitamente; no son pruebas descubiertas automáticamente por Maven.
+Ajustar host, puerto y credenciales a la instancia real; 55432 fue el puerto de las pruebas originales, no un requisito. El fixture exige el nombre de base supermax_gestion_test y ejecuta TRUNCATE sobre producto, reserva y reserva_item de esa base. Usarla exclusivamente para pruebas, sin datos a conservar.
 
-## Integración pendiente
+GestionReservaDAO permite inyectar la conexión de pruebas. Las pruebas existentes de este handoff no verifican por sí solas ReservaStockDAO ni el transporte TCP; estos usan la conexión configurada en Bd.java para su ejecución normal.
 
-El integrador agrega el import de GestionReservaServicio y este case:
+## Cierre de integración
 
-```java
-case "CONFIRMAR_RESERVA":
-    return new GestionReservaServicio().ejecutar(solicitud).toJSONString();
-```
+El case TCP y el error genérico ERROR_BD ya están integrados; no volver a agregarlos. Antes de cerrar, registrar pruebas de creación sin sobreventa, rollback de creación y catálogo mientras se confirma/libera.
 
-También adapta el dispatcher a ERROR_BD genérico y a la distinción entre tipos inválidos y campos faltantes, completa el servicio de creación y verifica catálogo/TCP juntos. Falta repetir mvn package y la verificación del módulo sin errores de acceso del compilador antes de considerar terminado el handoff.
+No agregar vencimientos ni deduplicación para completar esos ensayos. Las clases deben ser claras y breves; 100 líneas es una referencia de sencillez, no un límite obligatorio.

@@ -12,7 +12,7 @@ import org.json.simple.JSONObject;
 import fpuna.supermax.bd.ReservaStockDAO;
 import fpuna.supermax.entidad.ReservaItem;
 import fpuna.supermax.entidad.Reserva;
-import fpuna.supermax.entidad.ReservaException;
+import fpuna.supermax.entidad.ValidacionException;
 
 public class ReservaStockServicio {
 
@@ -23,55 +23,16 @@ public class ReservaStockServicio {
     }
 
     public JSONObject ejecutar(JSONObject solicitud) throws SQLException {
-        Object valorRequestId = solicitud.get("requestId");
-
-        if (valorRequestId == null) {
-            return error(null, "CAMPO_REQUERIDO", "Falta el campo requestId");
-        }
-
-        if (!(valorRequestId instanceof String)) {
-            return error(null, "SOLICITUD_INVALIDA", "El campo requestId debe ser una cadena");
-        }
-
-        String requestId = (String) valorRequestId;
-
-        if (requestId.trim().isEmpty()) {
-            return error(requestId, "CAMPO_REQUERIDO", "El campo requestId no puede estar vacio");
-        }
-
-        if (requestId.length() > 100) {
-            return error(requestId, "SOLICITUD_INVALIDA", "El campo requestId no puede superar 100 caracteres");
-        }
-
-        Object valorPedido = solicitud.get("pedidoExternoId");
-
-        if (valorPedido == null) {
-            return error(requestId, "CAMPO_REQUERIDO", "Falta el campo pedidoExternoId");
-        }
-
-        if (!(valorPedido instanceof String)) {
-            return error(requestId, "SOLICITUD_INVALIDA", "El campo pedidoExternoId debe ser una cadena");
-        }
-
-        String pedidoExternoId = (String) valorPedido;
-
-        if (pedidoExternoId.trim().isEmpty()) {
-            return error(requestId, "CAMPO_REQUERIDO", "El campo pedidoExternoId no puede estar vacio");
-        }
-
-        if (pedidoExternoId.length() > 50) {
-            return error(requestId, "SOLICITUD_INVALIDA", "El campo pedidoExternoId no puede superar 50 caracteres");
-        }
-
-        List<ReservaItem> items;
+        Object valorRequest = solicitud == null ? null : solicitud.get("requestId");
+        String requestId = valorRequest instanceof String ? (String) valorRequest : null;
 
         try {
-            items = validarItems(solicitud.get("items"));
-        } catch (IllegalArgumentException e) {
-            return error(requestId, "SOLICITUD_INVALIDA", e.getMessage());
-        }
+            validarTexto(valorRequest, "requestId", 100);
 
-        try {
+            String pedidoExternoId = validarTexto(solicitud.get("pedidoExternoId"), "pedidoExternoId", 50);
+
+            List<ReservaItem> items = validarItems(solicitud.get("items"));
+            
             Reserva reserva = reservaStockDAO.crearReserva(pedidoExternoId, items);
 
             JSONObject respuesta = new JSONObject();
@@ -79,24 +40,26 @@ public class ReservaStockServicio {
             respuesta.put("requestId", requestId);
             respuesta.put("reservaId", reserva.getReservaId());
             respuesta.put("estado", reserva.getEstado());
+            // timestamp
+            respuesta.put("timestamp", java.time.OffsetDateTime.now().toString());
 
             return respuesta;
-        } catch (ReservaException e) {
+
+        } catch (ValidacionException e) {
             return error(requestId, e.getCodigo(), e.getMessage());
         }
+
     }
 
     private List<ReservaItem> validarItems(Object valor) {
         if (!(valor instanceof JSONArray)) {
-            throw new IllegalArgumentException(
-                    "El campo items debe ser un array");
+            throw new ValidacionException("SOLICITUD_INVALIDA", "El campo items debe ser un array");
         }
 
         JSONArray array = (JSONArray) valor;
 
         if (array.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "La solicitud debe incluir al menos un item");
+            throw new ValidacionException("SOLICITUD_INVALIDA", "Debe incluir al menos un item");
         }
 
         List<ReservaItem> items = new ArrayList<>();
@@ -104,63 +67,54 @@ public class ReservaStockServicio {
 
         for (Object elemento : array) {
             if (!(elemento instanceof JSONObject)) {
-                throw new IllegalArgumentException(
-                        "Cada item debe ser un objeto JSON");
+                throw new ValidacionException("SOLICITUD_INVALIDA", "Cada item debe ser un objeto JSON");
             }
 
             JSONObject objeto = (JSONObject) elemento;
-
-            Object valorSku = objeto.get("sku");
-
-            if (!(valorSku instanceof String)) {
-                throw new IllegalArgumentException(
-                        "El sku de cada item debe ser una cadena");
-            }
-
-            String sku = (String) valorSku;
-
-            if (sku.trim().isEmpty() || sku.length() > 50) {
-                throw new IllegalArgumentException(
-                        "El sku debe tener entre 1 y 50 caracteres");
-            }
+            String sku = validarTexto(objeto.get("sku"), "sku", 50);
 
             if (!skus.add(sku)) {
-                throw new IllegalArgumentException(
-                        "SKU repetido: " + sku);
+                throw new ValidacionException("SOLICITUD_INVALIDA", "SKU repetido: " + sku);
             }
 
             Object valorCantidad = objeto.get("cantidad");
 
             if (!(valorCantidad instanceof Long)) {
-                throw new IllegalArgumentException(
-                        "La cantidad debe ser un numero entero");
+                throw new ValidacionException("SOLICITUD_INVALIDA", "La cantidad debe ser un numero entero");
             }
 
             long cantidad = (Long) valorCantidad;
 
             if (cantidad <= 0 || cantidad > Integer.MAX_VALUE) {
-                throw new IllegalArgumentException("La cantidad debe estar entre 1 y " + Integer.MAX_VALUE);
+                throw new ValidacionException("SOLICITUD_INVALIDA", "La cantidad debe estar entre 1 y " + Integer.MAX_VALUE);
             }
 
             ReservaItem item = new ReservaItem();
             item.setSku(sku);
             item.setCantidad((int) cantidad);
-
             items.add(item);
         }
 
         return items;
     }
 
-    private JSONObject error(
-            String requestId, String codigo, String mensaje) {
-        JSONObject respuesta = new JSONObject();
+    private String validarTexto(Object valor, String campo, int maximo) {
+        if (valor == null || (valor instanceof String && ((String) valor).trim().isEmpty())) {
+            throw new ValidacionException("CAMPO_REQUERIDO", "Falta el campo " + campo);
+        }
+        if (!(valor instanceof String) || ((String) valor).length() > maximo) {
+            throw new ValidacionException("SOLICITUD_INVALIDA", "Tipo o longitud invalidos para " + campo);
+        }
+        return (String) valor;
+    }
 
+    private JSONObject error(Object requestId, String codigo, String mensaje) {
+        JSONObject respuesta = new JSONObject();
         respuesta.put("ok", false);
         respuesta.put("requestId", requestId);
         respuesta.put("codigo", codigo);
         respuesta.put("mensaje", mensaje);
-
         return respuesta;
     }
+
 }

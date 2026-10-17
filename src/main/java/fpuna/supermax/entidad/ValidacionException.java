@@ -1,10 +1,10 @@
 package fpuna.supermax.entidad;
 
-public class ReservaException extends RuntimeException {
+public class ValidacionException extends RuntimeException {
 
     private final String codigo;
 
-    public ReservaException(String codigo, String mensaje) {
+    public ValidacionException(String codigo, String mensaje) {
         super(mensaje);
         this.codigo = codigo;
     }

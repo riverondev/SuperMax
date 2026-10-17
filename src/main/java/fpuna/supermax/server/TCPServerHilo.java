@@ -21,7 +21,7 @@ import fpuna.supermax.entidad.Producto;
 import fpuna.supermax.entidad.ProductoJSON;
 import fpuna.supermax.servicio.CatalogoServicio;
 import fpuna.supermax.servicio.ReservaStockServicio;
-import fpuna.supermax.entidad.ReservaException;
+import fpuna.supermax.entidad.ValidacionException;
 
 public class TCPServerHilo extends Thread {
     private final Socket socket;
@@ -58,30 +58,22 @@ public class TCPServerHilo extends Thread {
             if (!(valor instanceof JSONObject)) {
                 return error(null, "SOLICITUD_INVALIDA", "La solicitud debe ser un objeto JSON");
             }
-
             JSONObject solicitud = (JSONObject) valor;
-            String tipo = textoRequerido(solicitud, "tipo");
-            requestId = textoRequerido(solicitud, "requestId");
+
+            Object valorRequest = solicitud.get("requestId");
+            requestId = valorRequest instanceof String ? (String) valorRequest : null;
+            validarTexto(valorRequest, "requestId", 100);
+            String tipo = validarTexto(solicitud.get("tipo"), "tipo", 50);
 
             switch (tipo.toUpperCase()) {
                 case "GET_CATALOGO":
-                    CatalogoServicio s = new CatalogoServicio();
-                    String sku = leerSku(solicitud);
-                    List<Producto> lp = s.getCatalogo(sku);
-
-                    System.out.println("Request atendido: " + requestId);
-
-                    return respuestaGetCatalogo(requestId, lp);
+                    return new CatalogoServicio().ejecutar(solicitud).toJSONString();
 
                 case "RESERVAR_STOCK":
-                    return new ReservaStockServicio()
-                            .ejecutar(solicitud)
-                            .toJSONString();
+                    return new ReservaStockServicio().ejecutar(solicitud).toJSONString();
 
                 case "CONFIRMAR_RESERVA":
-                    return new GestionReservaServicio()
-                            .ejecutar(solicitud)
-                            .toJSONString();
+                    return new GestionReservaServicio().ejecutar(solicitud).toJSONString();
 
                 // AGREGAR SERVICIOS ACA
                 // case "SERVICIO":
@@ -93,54 +85,25 @@ public class TCPServerHilo extends Thread {
             }
 
         } catch (SQLException e) {
-            System.err.println(
-                    "Error de base de datos: " + e.getMessage());
-
-            return error(
-                    requestId,
-                    "ERROR_BD",
-                    "No se pudo completar la operacion");
-
+            System.err.println("Error de base de datos: " + e.getMessage());
+            return error(requestId, "ERROR_BD","No se pudo completar la operacion");
         } catch (ParseException e) {
-            return error(
-                    null,
-                    "JSON_INVALIDO",
-                    "No se pudo interpretar la solicitud");
-        } catch (ReservaException e) {
+            return error( null,"JSON_INVALIDO", "No se pudo interpretar la solicitud");
+        } catch (ValidacionException e) {
             return error(requestId, e.getCodigo(), e.getMessage());
-
-        } catch (
-
-        IllegalArgumentException e) {
-            return error(
-                    requestId,
-                    "CAMPO_REQUERIDO",
-                    e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return error(requestId,"CAMPO_REQUERIDO", e.getMessage());
         }
     }
 
-    private String textoRequerido(JSONObject solicitud, String campo) {
-        Object valor = solicitud.get(campo);
-
-        if (valor == null) {
-            throw new ReservaException(
-                    "CAMPO_REQUERIDO", "Falta el campo " + campo);
+    private String validarTexto(Object valor, String campo, int maximo) {
+        if (valor == null || (valor instanceof String && ((String) valor).trim().isEmpty())) {
+            throw new ValidacionException("CAMPO_REQUERIDO", "Falta el campo " + campo);
         }
-
-        if (!(valor instanceof String)) {
-            throw new ReservaException(
-                    "SOLICITUD_INVALIDA",
-                    "El campo " + campo + " debe ser una cadena");
+        if (!(valor instanceof String) || ((String) valor).length() > maximo) {
+            throw new ValidacionException("SOLICITUD_INVALIDA", "Tipo o longitud invalidos para " + campo);
         }
-
-        String texto = (String) valor;
-
-        if (texto.trim().isEmpty()) {
-            throw new ReservaException(
-                    "CAMPO_REQUERIDO", "Falta el campo " + campo);
-        }
-
-        return texto;
+        return (String) valor;
     }
 
     private String error(Object requestId, String codigo, String mensaje) {
@@ -152,34 +115,6 @@ public class TCPServerHilo extends Thread {
         return respuesta.toJSONString();
     }
 
-    private String leerSku(JSONObject solicitud) {
-        Object valor = solicitud.get("sku");
 
-        if (!(valor instanceof String)) {
-            throw new IllegalArgumentException(
-                    "El campo sku debe ser una cadena");
-        }
 
-        String sku = (String) valor;
-        return sku.isEmpty() ? null : sku;
-    }
-
-    private String respuestaGetCatalogo(String requestId, List<Producto> lp) {
-        // respuesta
-        JSONObject respuesta = new JSONObject();
-        respuesta.put("ok", true);
-        respuesta.put("requestId", requestId);
-
-        JSONArray list = new JSONArray();
-        for (Producto producto : lp) {
-            list.add(ProductoJSON.objetoJson(producto));
-        }
-        respuesta.put("productos", list);
-
-        // timestamp
-        respuesta.put("timestamp", java.time.OffsetDateTime.now().toString());
-
-        return respuesta.toJSONString();
-
-    }
 }

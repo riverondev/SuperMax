@@ -9,7 +9,7 @@ import java.util.Comparator;
 import java.util.List;
 
 import fpuna.supermax.entidad.Reserva;
-import fpuna.supermax.entidad.ReservaException;
+import fpuna.supermax.entidad.ValidacionException;
 import fpuna.supermax.entidad.ReservaItem;
 
 public class ReservaStockDAO {
@@ -54,7 +54,7 @@ public class ReservaStockDAO {
             throws SQLException {
 
         if (items == null || items.isEmpty()) {
-            throw new ReservaException(
+            throw new ValidacionException(
                     "SOLICITUD_INVALIDA", "La reserva debe incluir items");
         }
 
@@ -71,7 +71,7 @@ public class ReservaStockDAO {
             try {
                 for (ReservaItem item : ordenados) {
                     if (bloquearProducto(conn, item.getSku()) == null) {
-                        throw new ReservaException(
+                        throw new ValidacionException(
                                 "PRODUCTO_NO_EXISTE",
                                 "No existe el producto " + item.getSku());
                     }
@@ -81,7 +81,7 @@ public class ReservaStockDAO {
                     long disponible = consultarDisponibilidad(conn, item.getSku());
 
                     if (disponible < item.getCantidad()) {
-                        throw new ReservaException(
+                        throw new ValidacionException(
                                 "SIN_STOCK",
                                 "Stock insuficiente para " + item.getSku());
                     }

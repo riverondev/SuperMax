@@ -2,7 +2,7 @@
 
 > Para la entrega académica de tres servicios, usar [Contratos reducidos v2](Contratos_reducidos_v2.md) y los handoffs v2. Este documento conserva el diseño original de cinco servicios; sus campos de reservas fueron simplificados.
 
-Comparando: Wait review
+Especificación histórica de los cinco servicios. La entrega actual implementa los tres primeros con el contrato reducido enlazado arriba; los ejemplos siguientes conservan el diseño original.
 
 | Santiago Adrián Pérez Barreto | 5610478 |
 | --- | --- |
@@ -86,6 +86,11 @@ Bloquea temporalmente unidades de producto durante el proceso de compra para evi
   "expiraEnSegundos": 300,
   "timestamp": "2026-08-27T21:50:00-03:00"
 }
+```
+
+Ejemplo alternativo de error:
+
+```json
 {
   "ok": false,
   "requestId": "req-b2-01",
