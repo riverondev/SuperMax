@@ -15,18 +15,30 @@ Documento compartido para desarrollar los servicios 2 y 3 de SuperMax en paralel
 | Validación del catálogo | `sku` debe ser cadena; `""` consulta catálogo completo. Espacios no equivalen a cadena vacía. |
 | Respuesta del catálogo | Lista de productos con precio y stock, `ok`, `requestId`, `timestamp`. Una lista vacía también devuelve `ok: true`. |
 | Error de BD | `ProductoDAO` propaga `SQLException`; el servidor devuelve `ERROR_BD`. Ya no se confunde con una lista vacía. |
-| EntregaYa | Cliente interactivo en `Main`, destino fijo 127.0.0.1:5001. Genera UUID, comprueba requestId, muestra errores `ok: false` y continúa. Los fallos de conexión/parseo todavía pueden terminar el programa. |
-| PostgreSQL | Reconsultado el 16/10/2026 en modo de solo lectura: únicamente `public.producto`, con 3 filas. |
-| Reservas | SQL propuesto disponible, todavía sin aplicar. No existen clases de servicio, DAOs ni rutas TCP para los servicios 2 y 3. |
-| Verificación de este trabajo | Inspección de código, SQL y documentación, y lectura del esquema real. No se ejecutó una compilación ni pruebas de servicios en esta actualización documental. |
+| EntregaYa | `Main` realiza una consulta GET_CATALOGO y termina. Host, puerto, sucursalId y SKU se reciben como argumentos; valores predeterminados: 127.0.0.1, 5001, SUC-01 y ARROZ-1K. Genera UUID y comprueba requestId. Los errores del servidor, conexión o parseo pueden terminar el programa. |
+| PostgreSQL | La última consulta documentada del 16/10/2026 encontró únicamente `public.producto`, con 3 filas. Esta revisión posterior al pull no volvió a consultar la base; verificar su estado antes de probar reservas. |
+| Entidades de reservas | Existen `entidad/Reserva.java` y `entidad/ReservaItem.java`. Reserva contiene identificadores, estado, fechas OffsetDateTime y List<ReservaItem>; cada item contiene reservaId, sku y cantidad. |
+| DAO de creación | Existe `bd/ReservaStockDAO.java`: búsqueda por requestId con items, lectura de items, bloqueo de productos por SKU, hora de PostgreSQL, disponibilidad, inserción de cabecera/items y detección del conflicto de unicidad de requestId. Recibe Connection; no coordina la transacción ni reemplaza la validación del servicio. |
+| Servicios de reservas | Todavía no existen `ReservaStockServicio`, `GestionReservaServicio` ni `GestionReservaDAO`. El servidor sigue admitiendo únicamente GET_CATALOGO. No se encontraron pruebas ni fixtures de reservas en src. |
+| SQL de reservas | `002_reservas_propuesta.sql` está disponible. Su aplicación sigue pendiente según la última revisión documentada de la base; no se verificó nuevamente en esta actualización. |
+| Verificación de esta actualización | Inspección de código, SQL, documentación y estado Git después del pull, con HEAD en `ffb431d` (agrega ReservaStockDAO). No se ejecutaron compilación, pruebas ni consultas a PostgreSQL. |
 
 `producto` tiene `sku VARCHAR(50)` PK, `nombre VARCHAR(150)`, `precio BIGINT >= 0` y `stock INTEGER >= 0`; todos NOT NULL, sin defaults. Ver [modelo y propuesta SQL](Base_de_datos.md).
 
-Hay cambios locales previos en `ProductoDAO.java` y en el proyecto EntregaYa. Cada desarrollador debe revisar su diff antes de trabajar y conservar cambios ajenos. No tomar documentos históricos del 02/10 como descripción del código actual si contradicen esta revisión.
+Antes de esta edición documental, `git status --short` de SuperMax no mostró cambios locales pendientes. Cada desarrollador debe revisar su diff antes de trabajar y conservar cambios ajenos; no se revisó el estado Git de EntregaYa en esta actualización. No tomar documentos históricos del 02/10 como descripción del código actual si contradicen esta revisión.
+
+### Próximo trabajo del handoff 2
+
+1. Crear `bd/GestionReservaDAO.java`: leer cabecera por reservaId e items, bloquear productos por SKU y luego reserva, obtener clock_timestamp(), descontar stock con condición stock >= cantidad y actualizar estado. Todos los métodos usan la Connection de la operación.
+2. Crear `servicio/GestionReservaServicio.java`: validar solicitud, coordinar READ_COMMITTED y autoCommit=false, resolver estados/reintentos/vencimiento y construir la respuesta. Persistir EXPIRADA con commit aunque la respuesta sea RESERVA_EXPIRADA; hacer rollback y propagar los fallos SQL.
+3. Preparar una base exclusiva de pruebas, verificar/aplicar allí el esquema y crear fixtures propios. Ejecutar los casos de aceptación y concurrencia del handoff 2.
+4. Entregar al integrador el fragmento TCP y los resultados de pruebas, sin modificar por cuenta propia los archivos asignados al handoff 1.
+
+Las entidades Reserva y ReservaItem ya incorporadas pueden utilizarse sin modificarlas. El DAO del handoff 2 permanece independiente de ReservaStockDAO. La guía de buscarPorReservaId mostrada en la conversación todavía no está implementada en el repositorio.
 
 ## Acuerdos para los dos desarrolladores
 
-Estas reglas definen el siguiente incremento; todavía no están implementadas.
+Estas reglas definen el incremento de reservas. ReservaStockDAO implementa parte del acceso a datos; el flujo completo todavía está pendiente de servicios, integración y pruebas.
 
 1. Mantener el SQL de [002_reservas_propuesta.sql](../db/002_reservas_propuesta.sql): `reserva` y `reserva_item`. No agregar tablas de inventario, alertas ni pedidos externos.
 2. `producto.stock` representa stock físico. Crear una reserva no lo descuenta. Confirmar descuenta una sola vez. Liberar o vencer no lo incrementa.
