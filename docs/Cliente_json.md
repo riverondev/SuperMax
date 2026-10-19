@@ -16,21 +16,18 @@ En otra terminal, iniciar el cliente:
 ```powershell
 java -cp target/supermax-1.0-SNAPSHOT.jar fpuna.supermax.cliente.ClienteJson
 ```
-Destino opcional (por defecto 127.0.0.1:5001):
-```powershell
-java -cp target/supermax-1.0-SNAPSHOT.jar fpuna.supermax.cliente.ClienteJson 127.0.0.1 5001
-```
+Los clientes conectan siempre a `127.0.0.1:5001`, definido en `ClienteTCP`. No utilizan argumentos de linea de comandos.
 Pegar un JSON por linea despues del prompt `JSON>`. No escribir el prompt ni las comillas de un bloque Markdown. Escribir `salir` para terminar; un fin de entrada tambien cierra el cliente.
 
 ## Ejemplos con el seed v2
 
 Consultar disponibilidad:
 ```json
-{"tipo":"GET_CATALOGO","requestId":"cat-01","sku":"DEMO-ARROZ-1K"}
+{"tipo":"GET_CATALOGO","requestId":"cat-01","sku":"ARROZ-1K"}
 ```
 Crear una reserva (se guarda realmente en la base configurada por el servidor):
 ```json
-{"tipo":"RESERVAR_STOCK","requestId":"res-01","pedidoExternoId":"PED-DEMO-01","items":[{"sku":"DEMO-ARROZ-1K","cantidad":3}]}
+{"tipo":"RESERVAR_STOCK","requestId":"res-01","pedidoExternoId":"PED-01","items":[{"sku":"ARROZ-1K","cantidad":3}]}
 ```
 Guardar el reservaId de la respuesta y sustituir el 1 de este ejemplo:
 ```json
@@ -41,6 +38,6 @@ Las creaciones no se deduplican por requestId: repetir RESERVAR_STOCK puede crea
 
 Prueba del tipo incorrecto de requestId, sin crear reservas:
 ```json
-{"tipo":"GET_CATALOGO","requestId":123,"sku":"DEMO-ARROZ-1K"}
+{"tipo":"GET_CATALOGO","requestId":123,"sku":"ARROZ-1K"}
 ```
 Contrato completo: [Contratos reducidos v2](Contratos_reducidos_v2.md).

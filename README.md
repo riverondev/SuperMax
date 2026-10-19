@@ -50,7 +50,7 @@ Crear la base `supermax` y revisar la configuración de conexión. En una base v
 
 Si las tablas ya existen, no repetir los scripts de creación. El SQL v2 no migra el esquema anterior; `002_reservas_propuesta.sql` es histórico y no debe ejecutarse junto con v2.
 
-El seed agrega SKU `DEMO-*`, conserva los existentes y no reinicia su stock al repetirse. Incluye arroz con físico inicial 10, leche con 20, azúcar con 2 y aceite con 0. Los ensayos que reinicien datos deben usar una base exclusiva de pruebas.
+El seed agrega 20 productos de almacen, lacteos, carnes, frutas, verduras, bebidas, limpieza e higiene. Conserva los existentes y no reinicia su stock al repetirse. Incluye arroz con stock inicial 40, leche con 30, azucar con 2, jugo con 1 y aceite con 0. Los ensayos que reinicien datos deben usar una base exclusiva de pruebas.
 
 `producto.stock` es stock físico. El campo `stock` del catálogo es disponibilidad: físico menos cantidades de reservas RESERVADA. Reservar no cambia el físico; confirmar descuenta una sola vez; liberar no lo incrementa. Los DAO controlan las transacciones y bloquean productos en orden de SKU para coordinar operaciones concurrentes.
 
@@ -80,18 +80,14 @@ Con el servidor iniciado, abrir otra terminal en SuperMax:
 java -cp target/supermax-1.0-SNAPSHOT.jar fpuna.supermax.cliente.ClienteJson
 ```
 
-Por defecto conecta a `127.0.0.1:5001`. Para indicar otro destino:
-
-```powershell
-java -cp target/supermax-1.0-SNAPSHOT.jar fpuna.supermax.cliente.ClienteJson 127.0.0.1 5002
-```
+Los clientes conectan siempre a `127.0.0.1:5001`, definido en `ClienteTCP`. No utilizan argumentos de linea de comandos.
 
 Pegar cada JSON en una sola línea después de `JSON>`. El cliente muestra la respuesta y permite enviar otra solicitud; escribir `salir` para terminar. No reenvía automáticamente solicitudes fallidas.
 
 Ejemplo con el seed:
 
 ```json
-{"tipo":"GET_CATALOGO","requestId":"cat-01","sku":"DEMO-ARROZ-1K"}
+{"tipo":"GET_CATALOGO","requestId":"cat-01","sku":"ARROZ-1K"}
 ```
 
 Ver [uso del cliente](docs/Cliente_json.md) y [contratos v2](docs/Contratos_reducidos_v2.md) para reservar, confirmar, liberar y probar errores.

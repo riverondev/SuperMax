@@ -18,17 +18,16 @@ public class GestionReservaServicio {
     }
 
     public JSONObject ejecutar(JSONObject solicitud) throws SQLException {
-        Object valorRequest = solicitud == null ? null : solicitud.get("requestId");
-        String requestId = valorRequest instanceof String ? (String) valorRequest : null;
+        String requestId = (String) solicitud.get("requestId");
         try {
-            validarTexto(valorRequest, "requestId", 100);
-
             int reservaId = validarReservaId(solicitud.get("reservaId"));
 
-            String accion = validarTexto(solicitud.get("accion"), "accion", 9);
-            if (!"CONFIRMAR".equals(accion) && !"LIBERAR".equals(accion)) {
+            Object valorAccion = solicitud.get("accion");
+            if (!"CONFIRMAR".equals(valorAccion) && !"LIBERAR".equals(valorAccion)) {
                 throw new ValidacionException("SOLICITUD_INVALIDA", "accion debe ser CONFIRMAR o LIBERAR");
             }
+            String accion = (String) valorAccion;
+
             Reserva reserva = dao.gestionarReserva(reservaId, accion);
             JSONObject respuesta = new JSONObject();
             respuesta.put("ok", true);
@@ -37,9 +36,9 @@ public class GestionReservaServicio {
             respuesta.put("estado", reserva.getEstado());
             // timestamp
             respuesta.put("timestamp", java.time.OffsetDateTime.now().toString());
-            
+
             return respuesta;
-            
+
         } catch (ValidacionException error) {
             JSONObject respuesta = new JSONObject();
             respuesta.put("ok", false);
@@ -50,31 +49,12 @@ public class GestionReservaServicio {
         }
     }
 
-    private String validarTexto(Object valor, String campo, int maximo) {
-        if (valor == null || (valor instanceof String && ((String) valor).trim().isEmpty())) {
-            throw new ValidacionException("CAMPO_REQUERIDO", "Falta el campo " + campo);
-        }
-        if (!(valor instanceof String) || ((String) valor).length() > maximo) {
-            throw new ValidacionException("SOLICITUD_INVALIDA", "Tipo o longitud invalidos para " + campo);
-        }
-        return (String) valor;
-    }
-
     private int validarReservaId(Object valor) {
-        if (valor == null || (valor instanceof String && ((String) valor).trim().isEmpty())) {
-            throw new ValidacionException("CAMPO_REQUERIDO", "Falta el campo reservaId");
+
+        if (!(valor instanceof Long) || (Long) valor <= 0) {
+            throw new ValidacionException("SOLICITUD_INVALIDA", "reservaId debe ser un numero entero positivo");
         }
 
-        if (!(valor instanceof Long)) {
-            throw new ValidacionException("SOLICITUD_INVALIDA", "reservaId debe ser un numero entero");
-        }
-
-        long id = (Long) valor;
-
-        if (id <= 0 || id > Integer.MAX_VALUE) {
-            throw new ValidacionException("SOLICITUD_INVALIDA", "reservaId fuera del rango permitido");
-        }
-
-        return (int) id;
+        return ((Long) valor).intValue();
     }
 }

@@ -50,13 +50,7 @@ public class ReservaStockDAO {
         }
     }
 
-    public Reserva crearReserva(String pedidoExternoId, List<ReservaItem> items)
-            throws SQLException {
-
-        if (items == null || items.isEmpty()) {
-            throw new ValidacionException(
-                    "SOLICITUD_INVALIDA", "La reserva debe incluir items");
-        }
+    public Reserva crearReserva(String pedidoExternoId, List<ReservaItem> items) throws SQLException {
 
         List<ReservaItem> ordenados = new ArrayList<>(items);
         ordenados.sort(Comparator.comparing(ReservaItem::getSku));

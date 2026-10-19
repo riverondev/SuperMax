@@ -25,11 +25,8 @@ public class CatalogoServicio {
     }
 
     public JSONObject ejecutar(JSONObject solicitud) throws SQLException {
-        Object valorRequest = solicitud == null ? null : solicitud.get("requestId");
-        String requestId = valorRequest instanceof String ? (String) valorRequest : null;
+        String requestId = (String) solicitud.get("requestId");
         try {
-            validarTexto(valorRequest, "requestId", 100);
-
             String sku = validarSku(solicitud);
             List<Producto> lp = sku == null ? productoDAO.seleccionarCatalogo() : productoDAO.seleccionarPorSku(sku);
 
@@ -59,15 +56,6 @@ public class CatalogoServicio {
 
     }
 
-    private String validarTexto(Object valor, String campo, int maximo) {
-        if (valor == null || (valor instanceof String && ((String) valor).trim().isEmpty())) {
-            throw new ValidacionException("CAMPO_REQUERIDO", "Falta el campo " + campo);
-        }
-        if (!(valor instanceof String) || ((String) valor).length() > maximo) {
-            throw new ValidacionException("SOLICITUD_INVALIDA", "Tipo o longitud invalidos para " + campo);
-        }
-        return (String) valor;
-    }
 
     private String validarSku(JSONObject solicitud) {
         Object valor = solicitud.get("sku");
@@ -76,7 +64,7 @@ public class CatalogoServicio {
             throw new ValidacionException("SOLICITUD_INVALIDA", "El campo sku debe ser una cadena");
         }
 
-        String sku = (String) valor;
+        String sku = ((String) valor).trim();
         return sku.isEmpty() ? null : sku;
     }
 

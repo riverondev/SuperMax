@@ -24,9 +24,7 @@ public class GestionReservaDAO {
     }
 
     public Reserva gestionarReserva(int reservaId, String accion) throws SQLException {
-        if (!"CONFIRMAR".equals(accion) && !"LIBERAR".equals(accion)) {
-            throw new ValidacionException("SOLICITUD_INVALIDA", "Accion no admitida");
-        }
+
         try (Connection conn = conexion.abrir()) {
             conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             conn.setAutoCommit(false);

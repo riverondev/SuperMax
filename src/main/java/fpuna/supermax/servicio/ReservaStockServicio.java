@@ -23,16 +23,13 @@ public class ReservaStockServicio {
     }
 
     public JSONObject ejecutar(JSONObject solicitud) throws SQLException {
-        Object valorRequest = solicitud == null ? null : solicitud.get("requestId");
-        String requestId = valorRequest instanceof String ? (String) valorRequest : null;
+        String requestId = (String) solicitud.get("requestId");
 
         try {
-            validarTexto(valorRequest, "requestId", 100);
-
             String pedidoExternoId = validarTexto(solicitud.get("pedidoExternoId"), "pedidoExternoId", 50);
 
             List<ReservaItem> items = validarItems(solicitud.get("items"));
-            
+
             Reserva reserva = reservaStockDAO.crearReserva(pedidoExternoId, items);
 
             JSONObject respuesta = new JSONObject();
@@ -52,10 +49,6 @@ public class ReservaStockServicio {
     }
 
     private List<ReservaItem> validarItems(Object valor) {
-        if (!(valor instanceof JSONArray)) {
-            throw new ValidacionException("SOLICITUD_INVALIDA", "El campo items debe ser un array");
-        }
-
         JSONArray array = (JSONArray) valor;
 
         if (array.isEmpty()) {
@@ -66,27 +59,16 @@ public class ReservaStockServicio {
         Set<String> skus = new HashSet<>();
 
         for (Object elemento : array) {
-            if (!(elemento instanceof JSONObject)) {
-                throw new ValidacionException("SOLICITUD_INVALIDA", "Cada item debe ser un objeto JSON");
-            }
-
             JSONObject objeto = (JSONObject) elemento;
-            String sku = validarTexto(objeto.get("sku"), "sku", 50);
+            String sku = (String) objeto.get("sku");
+            long cantidad = (Long) objeto.get("cantidad");
+
+            if (cantidad <= 0) {
+                throw new ValidacionException("SOLICITUD_INVALIDA", "La cantidad debe ser positiva");
+            }
 
             if (!skus.add(sku)) {
                 throw new ValidacionException("SOLICITUD_INVALIDA", "SKU repetido: " + sku);
-            }
-
-            Object valorCantidad = objeto.get("cantidad");
-
-            if (!(valorCantidad instanceof Long)) {
-                throw new ValidacionException("SOLICITUD_INVALIDA", "La cantidad debe ser un numero entero");
-            }
-
-            long cantidad = (Long) valorCantidad;
-
-            if (cantidad <= 0 || cantidad > Integer.MAX_VALUE) {
-                throw new ValidacionException("SOLICITUD_INVALIDA", "La cantidad debe estar entre 1 y " + Integer.MAX_VALUE);
             }
 
             ReservaItem item = new ReservaItem();

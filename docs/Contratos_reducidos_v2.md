@@ -160,7 +160,7 @@ Una reserva abandonada continúa reteniendo unidades hasta liberarse. Dos creaci
 
 Datos para una demostración: [seed de productos v2](../db/003_seed_productos_v2.sql). Requiere la tabla producto y se ejecuta una vez que se selecciona la base deseada. No sobrescribe SKU existentes ni reinicia su stock al repetirse; no crea reservas.
 En una base vacía, ejecutar primero 001_producto.sql y 002_reservas_v2.sql. Si las tablas ya existen, no repetir los scripts de creación.
-El seed incluye DEMO-ARROZ-1K con físico inicial 10, DEMO-LECHE-1L con 20, DEMO-AZUCAR-1K con 2 y DEMO-ACEITE-900 con 0. Para usar los ejemplos anteriores, sustituir sus SKU por estos SKU de demostración.
+El seed incluye 20 productos variados, entre ellos ARROZ-1K con stock inicial 40, LECHE-1L con 30, AZUCAR-1K con 2, JUGO-1L con 1 y ACEITE-900 con 0. Los SKU de los ejemplos ARROZ-1K y LECHE-1L existen en este catalogo.
 
 Desde PowerShell, ubicado en SuperMax:
 ```powershell

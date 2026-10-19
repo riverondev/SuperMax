@@ -1,0 +1,102 @@
+1. CATALOGO COMPLETO
+Esperado: ok=true y todos los productos con su disponibilidad actual.
+{"tipo":"GET_CATALOGO","requestId":"cat-01","sku":""}
+
+2. BUSCAR PRODUCTO POR SKU
+Esperado inicial: ARROZ-1K con stock disponible 40.
+{"tipo":"GET_CATALOGO","requestId":"cat-02","sku":"ARROZ-1K"}
+
+3. PRODUCTO INEXISTENTE EN CATALOGO
+Esperado: ok=true y productos vacio.
+{"tipo":"GET_CATALOGO","requestId":"cat-03","sku":"NO-EXISTE"}
+
+4. CATALOGO SIN SKU / SKU DE TIPO INCORRECTO
+Esperado: SOLICITUD_INVALIDA.
+{"tipo":"GET_CATALOGO","requestId":"cat-04"}
+{"tipo":"GET_CATALOGO","requestId":"cat-05","sku":123}
+
+5. CREAR RESERVA DE VARIOS PRODUCTOS
+Esperado: ok=true, estado RESERVADA y reservaId generado. Anotar ese ID.
+{"tipo":"RESERVAR_STOCK","requestId":"res-01","pedidoExternoId":"PED-001","items":[{"sku":"ARROZ-1K","cantidad":3},{"sku":"LECHE-1L","cantidad":2}]}
+
+6. VER DISPONIBILIDAD DESPUES DE RESERVAR
+Esperado tras el caso 5: arroz 37 y leche 28.
+{"tipo":"GET_CATALOGO","requestId":"cat-06","sku":"ARROZ-1K"}
+{"tipo":"GET_CATALOGO","requestId":"cat-07","sku":"LECHE-1L"}
+
+7. CONFIRMAR RESERVA DEL CASO 5
+Usar el ID recibido. Esperado: estado CONFIRMADA.
+La disponibilidad se mantiene; la confirmacion descuenta el stock fisico.
+{"tipo":"CONFIRMAR_RESERVA","requestId":"conf-01","reservaId":1,"accion":"CONFIRMAR"}
+
+8. REPETIR CONFIRMACION
+Mismo ID. Esperado: CONFIRMADA sin descontar otra vez.
+{"tipo":"CONFIRMAR_RESERVA","requestId":"conf-02","reservaId":1,"accion":"CONFIRMAR"}
+
+9. INTENTAR LIBERAR UNA RESERVA CONFIRMADA
+Mismo ID. Esperado: ESTADO_INVALIDO.
+{"tipo":"CONFIRMAR_RESERVA","requestId":"lib-01","reservaId":1,"accion":"LIBERAR"}
+
+10. CREAR OTRA RESERVA PARA LIBERAR
+Esperado: RESERVADA. Anotar el nuevo ID.
+{"tipo":"RESERVAR_STOCK","requestId":"res-02","pedidoExternoId":"PED-002","items":[{"sku":"AZUCAR-1K","cantidad":1}]}
+
+11. LIBERAR LA SEGUNDA RESERVA
+Usar el ID del caso 10. Esperado: LIBERADA; se recupera la disponibilidad.
+{"tipo":"CONFIRMAR_RESERVA","requestId":"lib-02","reservaId":2,"accion":"LIBERAR"}
+{"tipo":"GET_CATALOGO","requestId":"cat-08","sku":"AZUCAR-1K"}
+
+12. REPETIR LIBERACION / CONFIRMAR UNA RESERVA LIBERADA
+Mismo ID del caso 10. Primero: LIBERADA. Segundo: ESTADO_INVALIDO.
+{"tipo":"CONFIRMAR_RESERVA","requestId":"lib-03","reservaId":2,"accion":"LIBERAR"}
+{"tipo":"CONFIRMAR_RESERVA","requestId":"conf-03","reservaId":2,"accion":"CONFIRMAR"}
+
+13. STOCK INSUFICIENTE / PRODUCTO AGOTADO
+Esperado: SIN_STOCK, sin crear reserva.
+{"tipo":"RESERVAR_STOCK","requestId":"err-01","pedidoExternoId":"PED-003","items":[{"sku":"AZUCAR-1K","cantidad":3}]}
+{"tipo":"RESERVAR_STOCK","requestId":"err-02","pedidoExternoId":"PED-004","items":[{"sku":"ACEITE-900","cantidad":1}]}
+
+14. PRODUCTO INEXISTENTE AL RESERVAR
+Esperado: PRODUCTO_NO_EXISTE.
+{"tipo":"RESERVAR_STOCK","requestId":"err-03","pedidoExternoId":"PED-005","items":[{"sku":"NO-EXISTE","cantidad":1}]}
+
+15. RESERVA COMPLETA RECHAZADA POR UN ITEM SIN STOCK
+Esperado: SIN_STOCK; no se reserva tampoco el arroz.
+Consultar arroz antes y despues: su disponibilidad debe ser la misma.
+{"tipo":"GET_CATALOGO","requestId":"cat-09","sku":"ARROZ-1K"}
+{"tipo":"RESERVAR_STOCK","requestId":"err-04","pedidoExternoId":"PED-006","items":[{"sku":"ARROZ-1K","cantidad":1},{"sku":"ACEITE-900","cantidad":1}]}
+{"tipo":"GET_CATALOGO","requestId":"cat-10","sku":"ARROZ-1K"}
+
+16. ITEMS VACIOS / CANTIDAD CERO / CANTIDAD NEGATIVA / SKU REPETIDO
+Esperado: SOLICITUD_INVALIDA.
+{"tipo":"RESERVAR_STOCK","requestId":"err-05","pedidoExternoId":"PED-007","items":[]}
+{"tipo":"RESERVAR_STOCK","requestId":"err-06","pedidoExternoId":"PED-008","items":[{"sku":"ARROZ-1K","cantidad":0}]}
+{"tipo":"RESERVAR_STOCK","requestId":"err-07","pedidoExternoId":"PED-009","items":[{"sku":"ARROZ-1K","cantidad":-1}]}
+{"tipo":"RESERVAR_STOCK","requestId":"err-08","pedidoExternoId":"PED-010","items":[{"sku":"ARROZ-1K","cantidad":1},{"sku":"ARROZ-1K","cantidad":2}]}
+
+17. PEDIDO EXTERNO VACIO
+Esperado: CAMPO_REQUERIDO.
+{"tipo":"RESERVAR_STOCK","requestId":"err-09","pedidoExternoId":"","items":[{"sku":"ARROZ-1K","cantidad":1}]}
+
+18. RESERVA INEXISTENTE
+Usar un ID que no exista. Esperado: RESERVA_NO_EXISTE.
+{"tipo":"CONFIRMAR_RESERVA","requestId":"err-10","reservaId":999999,"accion":"CONFIRMAR"}
+
+19. ACCION INVALIDA / ID INVALIDO
+Esperado: SOLICITUD_INVALIDA.
+{"tipo":"CONFIRMAR_RESERVA","requestId":"err-11","reservaId":1,"accion":"CANCELAR"}
+{"tipo":"CONFIRMAR_RESERVA","requestId":"err-12","reservaId":0,"accion":"CONFIRMAR"}
+{"tipo":"CONFIRMAR_RESERVA","requestId":"err-13","reservaId":"1","accion":"CONFIRMAR"}
+
+20. VALIDACION DEL MENSAJE COMUN
+Sin requestId: CAMPO_REQUERIDO. requestId numerico: SOLICITUD_INVALIDA.
+Servicio desconocido: TIPO_NO_SOPORTADO. Array como mensaje: SOLICITUD_INVALIDA.
+{"tipo":"GET_CATALOGO","sku":""}
+{"tipo":"GET_CATALOGO","requestId":123,"sku":""}
+{"tipo":"OTRO_SERVICIO","requestId":"err-14"}
+[]
+
+21. JSON MAL FORMADO (ERROR INTENCIONAL)
+Esperado: JSON_INVALIDO.
+{"tipo":"GET_CATALOGO","requestId":"err-15","sku":}
+

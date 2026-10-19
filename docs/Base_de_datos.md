@@ -63,7 +63,7 @@ En una base nueva, ejecutar en orden:
 
 No repetir los CREATE TABLE sobre tablas existentes. Los scripts son de inicialización, no una migración desde el esquema anterior. Si ya existe otra estructura, inspeccionarla y preparar una migración que preserve datos.
 
-El seed agrega cuatro productos DEMO-* mediante ON CONFLICT DO NOTHING. No sobrescribe precios, nombres ni stocks existentes y no reinicia datos. Su SELECT final muestra stock físico; GET_CATALOGO muestra disponibilidad.
+El seed agrega 20 productos variados sin prefijo DEMO mediante ON CONFLICT DO NOTHING. No sobrescribe precios, nombres ni stocks existentes y no reinicia datos. Su SELECT final muestra stock físico; GET_CATALOGO muestra disponibilidad.
 
 ## Estado de verificación y antecedente
 
